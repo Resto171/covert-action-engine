@@ -2,13 +2,15 @@
 
 #include <array>
 #include <cstdint>
-#include <fstream>
 #include <string>
 #include <vector>
+
+#include "../types.h"  // City (the single canonical definition)
 
 #define NUM_MISSION_TYPES 13
 
 int case_gen();
+
 
 struct Organization {
   std::string full_name;
@@ -16,20 +18,24 @@ struct Organization {
   char id_char;  // TODO: type
 };
 
-Organization ownOrg = Organization{"CIA", "CIA", '?'};
+// `inline` gives these tables a single, shared definition while keeping them in
+// the header. They used to be plain globals, so a second translation unit that
+// included this header would have failed to link.
+inline const Organization ownOrg { "CIA", "CIA", '?' };
 
-static const std::array<Organization, 3> alliedOrg {
-  Organization{"KGB", "KGB", '!'},
-  Organization{"MI6", "MI6", '@'},
+inline const std::array<Organization, 3> alliedOrg {
+  Organization{"KGB",    "KGB",   '!'},
+  Organization{"MI6",    "MI6",   '@'},
   Organization{"Mossad", "Mossd", '#'},
 };
 
+
 enum {
-  AMAZON_CARTEL = 'a',  // TODO: better this way?
+  AMAZON_CARTEL    = 'a',  // TODO: better this way?
   COLUMBIAN_CARTEL = 'b',
 };
 
-static const std::array<Organization, 26> crimeOrg {
+inline const std::array<Organization, 26> crimeOrg {
   Organization{"Amazon Cartel",        "?",     'a'},  // TODO: assign the correct letters and abbrevs
   Organization{"Colombian Cartel",     "?",     COLUMBIAN_CARTEL},
   Organization{"Death Squads",         "?",     'c'},
@@ -59,28 +65,18 @@ static const std::array<Organization, 26> crimeOrg {
 };
 
 
-std::string generateName(Organization org) {
-  switch (org.id_char) {
-    case COLUMBIAN_CARTEL:
-      return std::string("Anita Todo");
-    default:
-      return std::string("Mark Todo");  // TODO: will the compiler complain if this isn't at the function end?
-  }
-}
-
-
-class City  { public: City(){} };  // TODO
+std::string generateName(Organization org);
 
 
 enum class Rank : uint16_t {
-  Nobody = 0,
-  Operative = 20,
-  Technician = 25,
-  Agent = 30,
-  Organizer = 35,
-  SpecialAgent = 40,
-  GroupLeader = 45,
-  Mastermind = 200,
+  Nobody       =   0,
+  Operative    =  20,
+  Technician   =  25,
+  Agent        =  30,
+  Organizer    =  35,
+  SpecialAgent =  40,
+  GroupLeader  =  45,
+  Mastermind   = 200,
 };
 
 
@@ -95,45 +91,33 @@ enum class Status {
 
 class Participant {
 public:
-  Participant(std::string role);
+  explicit Participant(std::string role);
 
-  std::string getName()  { return this->name; };
-  char getAgentLetter()  { return this->agentletter; };
-  uint16_t getRankPoints()  { return static_cast<uint16_t>(this->rank); };
-  std::string getRole()  { return this->role; };
+  std::string getName() const        { return name; }
+  char        getAgentLetter() const { return agentletter; }
+  uint16_t    getRankPoints() const  { return static_cast<uint16_t>(rank); }
+  std::string getRole() const        { return role; }
 
 private:
-  std::string  name;  // TODO: change types
-  char         agentletter;
-  Rank         rank;
-  City         city;
-  Organization affiliation;
-  City         recruitcity;
-  Participant* p_recruiter;
+  std::string  name;
+  char         agentletter { 'Q' };  // TODO: pickRandomUnusedLetter()
+  Rank         rank { Rank::Operative };
+  City         city {};
+  Organization affiliation {};
+  City         recruitcity {};
+  Participant* p_recruiter { nullptr };  // TODO: link recruiters after all participants exist
   std::string  role;
-  Status       status;
-  uint8_t      visibility;
+  Status       status { Status::AtLarge };
+  uint8_t      visibility { 0x40 };
 };
-
-Participant::Participant(std::string role) {
-  this->name = generateName(affiliation);  // TODO: fix inheritance
-  this->agentletter = 'Q';  // TODO: pickRandomUnusedLetter();
-  this->rank = Rank::Operative;
-  this->city = City();
-  this->affiliation = Organization();
-  this->recruitcity = City();
-///   this->recruiter = ...;  // TODO: these need to point to each other, so create a recruiter linkage function after all participants are created
-  this->role = role;
-  this->status = Status::AtLarge;
-  this->visibility = 0x40;
-}
 
 
 class Mission {
 public:
-  Mission(std::string name)  { this->name = name; }
-  void addParticipant(std::string role)  { this->participants.push_back(Participant(role)); }
-  void printOverview();
+  explicit Mission(std::string name);
+
+  void addParticipant(std::string role);
+  void printOverview() const;
 
 private:
   std::string name;
@@ -144,16 +128,8 @@ private:
 
 class MissionSet {
 public:
-  MissionSet(Mission m1, Mission m2, Mission m3)  {}  // TODO: direct init
+  MissionSet(Mission, Mission, Mission);  // TODO: direct init the three missions
 };
 
 
-void Mission::printOverview() {
-///   std::cout << this->name << std::endl;
-///   std::cout << std::string(this->name.length(), '=') << std::endl;
-///   for (auto& party : this->participants) {
-///     std::cout << party.getName() << ", " << party.getRole() << std::endl;
-///   }
-}
-
-std::vector<Mission> missions;  // TODO: switch to a set type with name as key
+extern std::vector<Mission> missions;  // TODO: switch to a set type with name as key
