@@ -1,98 +1,107 @@
-#include <typeinfo>
 #include "cryptography.h"
+
+#include <algorithm>
+#include <numeric>
+#include <utility>
+
 
     #if defined(TEST_ACTIVE)
     #include <iostream>
     #endif
+
+
+namespace {
+// Messages to decode. Kept short so they fit the play area, and in the spirit
+// of the game's intercepted traffic. TODO: load from PROSE.DTA once the data
+// parsers land.
+const char* const kMessages[] = {
+  "MEET ME AT THE DOCKS AT MIDNIGHT",
+  "THE SHIPMENT ARRIVES ON TUESDAY",
+  "OUR AGENT IN CAIRO HAS BEEN COMPROMISED",
+  "TRANSFER THE FUNDS TO THE USUAL ACCOUNT",
+  "THE MASTERMIND IS HIDING IN MEDELLIN",
+  "ABORT THE MISSION AND LEAVE THE CITY",
+};
+}  // namespace
+
+
 MiniGameCryptography::MiniGameCryptography() {
 #if defined(TEST_ACTIVE)
   std::cout << "CRYPTOGRAPHY MINIGAME CLASS CREATED\n";
 #endif
 }
 
+
 int MiniGameCryptography::start(Difficulty level) {
-  (void)level;  // TODO: use the difficulty
+  (void)level;  // TODO: difficulty affects message length and punctuation
   std::random_device seeder;
   std::mt19937 rng(seeder());
 
-  letter_counts.fill(0);
-  user_decipher.fill(' ');
+  // Shuffle the alphabet into a random substitution.
+  std::string alphabet(26, ' ');
+  std::iota(alphabet.begin(), alphabet.end(), 'A');
+  std::shuffle(alphabet.begin(), alphabet.end(), rng);
 
-  // Create character array from Z to A.
-  std::string ascii_base(26, ' ');
-  std::iota(ascii_base.begin(), ascii_base.end(), 'A');
-  std::reverse(ascii_base.begin(), ascii_base.end());
-
-  std::srand(static_cast<unsigned int>(std::time(nullptr)));  // RNG seed
-
-  int cipher_idx = 0;
-  for (auto& c : cipher_key) {
-    // Shuffle when the next cipher letter matches the original letter or last cipher letter will be Z.
-    while (cipher_idx == ascii_base.back() - 'A' || ascii_base[0] == 'Z') {
-      std::shuffle(ascii_base.begin(), ascii_base.end(), rng);
-    }
-
-    c = ascii_base.back();  // Assign a cipher letter
-    ascii_base.pop_back();
-    decipher_key[c - 'A'] = 'A' + cipher_idx;  // Map the matching decipher letter
-    cipher_idx++;
+  for (int i = 0; i < 26; ++i) {
+    cipher_key[i] = alphabet[i];                 // plaintext 'A'+i -> cipher
+    decipher_key[alphabet[i] - 'A'] = 'A' + i;   // cipher -> plaintext 'A'+i
   }
 
-  test_convert_message(cipher_key);
+  // Pick a message and encrypt it (non-letters pass through unchanged).
+  std::uniform_int_distribution<> pick(0, (int)(sizeof(kMessages) / sizeof(kMessages[0])) - 1);
+  plain_message = kMessages[pick(rng)];
 
+  cipher_message.clear();
+  cipher_message.reserve(plain_message.size());
+  letter_counts.fill(0);
+  for (char p : plain_message) {
+    if (p >= 'A' && p <= 'Z') {
+      const char c = cipher_key[p - 'A'];
+      cipher_message.push_back(c);
+      ++letter_counts[c - 'A'];
+    } else {
+      cipher_message.push_back(p);
+    }
+  }
+
+  user_decipher.fill(' ');
+  cursor_idx = 0;
   return 0;
 }
 
 
-// TODO: on higher difficulties, unused letters are recycled so that high-freq letters (E, T, S) use two cipher characters. is this randomly chosen or predetermined??
-// TODO: strip punctuation depending on difficulty
-// TODO: when checking the message, any remaining letters are valid when letter_counts[...] is zero!
-
-
-void MiniGameCryptography::test_convert_message(const auto& key) {
-  (void)key;  // TODO
-// TODO
-/*
-  int l = 0;
-  // std::string test_msg = "AB. CA";
-  std::string test_msg = "MI6 IS READY TO REWARD YOU FOR YOUR SUCCESS.  THE ALARM SYSTEM AT A LARGE INDUSTRIAL WAREHOUSE IS A BETA MODEL HUGHES ELECTROMASTER. THIS MONTHS ACCESS CODE WORD IS ROSEBUD.  OUT PROJECT HERE IN NASSAU PROCEEDS ON SCHEDULE. NONE DOUBT YOUR LOYALTY. WE ARE CONFIDENT YOUR WORK IN MEDELLIN WILL CONTINUE ON SCHEDULE. FELLOW WARRIORS OF THE FLN NOW IS THE TIME FOR ACTION.";
-  // std::string test_msg = "OUR PROJECT HERE IN SAN JUAN PROCEEDS ON SCHEDULE I AM PLANNING TO VISIT MEDELLIN SHORTLY YOUR SUPPORT IS ESSENTIAL IN THIS OPERATION M18 IS READY TO REWARD YOU FOR YOUR SUCCESS WE WELCOME COOPERATION WITH THE HAITIAN JUNTA";
-  static const unsigned int WRAP_LEN = 42;
-
-  unsigned int lines = 1 + test_msg.length() / WRAP_LEN;
-
-  // TODO: letter_counts is broken because it is being printed before being fully calculated. Push everything into a vector and replace letter_counts at the end.
-  std::cout << user_decipher[l] << " " << (char)('A' + l) << " " << letter_counts[l] << "\n"; ++l;
-  for (int line = 0; line < lines; ++line) {
-    if (line != 0) {
-      if (test_msg.substr(line * WRAP_LEN - 1, 2).find(' ') == std::string::npos)  { std::cout << "-"; }
-      std::cout << "\n" << user_decipher[l] << " " << (char)('A' + l) << " " << letter_counts[l]; ++l;
-      std::cout << "\n" << user_decipher[l] << " " << (char)('A' + l) << " " << letter_counts[l]; ++l;
-      std::cout << std::endl;
-    }
-
-    // std::cout << decipher_key[l] << " " << (char)('A' + l) << " " << letter_counts[l] << std::endl;
-    std::cout << user_decipher[l] << " " << (char)('A' + l) << " " << letter_counts[l] << "   "; ++l;
-
-    for (auto& letter : test_msg.substr(line * WRAP_LEN, WRAP_LEN)) {
-      if (letter < 'A' || letter > 'Z')  { std::cout << letter; continue; }
-      auto idx = letter - 'A';
-      std::cout << key[idx];
-      letter_counts[key[idx] - 'A']++;
-    }
+int MiniGameCryptography::correctCount() const {
+  int count = 0;
+  for (int i = 0; i < 26; ++i) {
+    if (user_decipher[i] == decipher_key[i])  { ++count; }
   }
-  while (l < 26) {
-    std::cout << "\n" << user_decipher[l] << " " << (char)('A' + l) << " " << letter_counts[l]; ++l;
-  }
-  std::cout << std::endl;
-  // */
+  return count;
 }
 
-MiniGameCryptography::~MiniGameCryptography()  {}
+
+void MiniGameCryptography::moveCursor(int dx, int dy) {
+  // The alphabet is laid out as two rows of thirteen letters.
+  cursor_idx = ((cursor_idx + dx + 13 * dy) % 26 + 26) % 26;
+}
+
+
+void MiniGameCryptography::cycleLetter() {
+  char& guess = user_decipher[cursor_idx];
+  if (guess == ' ')       { guess = 'A'; }
+  else if (guess == 'Z')  { guess = ' '; }
+  else                    { ++guess; }
+}
+
 
 void MiniGameCryptography::draw() {
-    // TODO
+  // Rendering is done by GameState::drawMiniGame().
+#if defined(TEST_ACTIVE)
+  std::cout << "crypto ciphertext: " << cipher_message << "\n";
+#endif
 }
+
+
+MiniGameCryptography::~MiniGameCryptography() {}
 
 Difficulty MiniGameCryptography::getGameDifficulty() {
   return Difficulty::Level1;  // TODO

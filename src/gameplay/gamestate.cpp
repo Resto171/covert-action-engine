@@ -7,6 +7,7 @@
 void GameState::initMiniGameClasses()
 {
   mGameElec = std::make_unique<MiniGameElectronics>();
+  mGameCrypto = std::make_unique<MiniGameCryptography>();
 }
 
 
@@ -162,7 +163,7 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->modalSequence == 3) {
           if (this->selectedChoice == 0)  { currentScreen = GameScreen::MiniGameCombatStart; }
           if (this->selectedChoice == 1)  { currentScreen = GameScreen::MiniGameDrivingStart; }
-          if (this->selectedChoice == 2)  { currentScreen = GameScreen::MiniGameCryptoStart; }
+          if (this->selectedChoice == 2)  { enterMiniGame(MiniGameType::Crypto); }
           if (this->selectedChoice == 3)  { enterMiniGame(MiniGameType::Elec); }
         }
         // TODO: default?
@@ -352,10 +353,15 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         break;
       case GameScreen::MiniGameCombatStart:
       case GameScreen::MiniGameDrivingStart:
-      case GameScreen::MiniGameCryptoStart:
         // TODO: actually run the minigame. For now return to skill practice.
         currentScreen = GameScreen::SkillPractice;
         this->modalSequence = 0;
+        break;
+      case GameScreen::MiniGameCryptoStart:
+        // Normally started by SkillPractice; this is a fallback for reaching the
+        // screen directly. Starting it sets inMiniGame, so later getNextScreen()
+        // calls take the minigame branch above.
+        enterMiniGame(MiniGameType::Crypto);
         break;
       case GameScreen::MiniGameElecStart:
         // Normally the minigame is started by the screen that links here (see the
@@ -385,6 +391,8 @@ GameScreen GameState::goBackFrom(OriginScreen os)
       return GameScreen::CIAMainMenu;
     case OriginScreen::CityMenu:
       return GameScreen::CityMainMenu;
+    case OriginScreen::SkillPractice:
+      return GameScreen::SkillPractice;
     case OriginScreen::UNKNOWNORIGIN:
     default:
       return GameScreen::CityMainMenu;
@@ -394,7 +402,7 @@ GameScreen GameState::goBackFrom(OriginScreen os)
 
 void GameState::enterMiniGame(MiniGameType miniGame)
 {
-  if (!mGameElec)  { initMiniGameClasses(); }
+  if (!mGameElec || !mGameCrypto)  { initMiniGameClasses(); }
 
   switch (miniGame) {
     case MiniGameType::Elec:
@@ -403,9 +411,15 @@ void GameState::enterMiniGame(MiniGameType miniGame)
       this->inMiniGame = true;
       this->currentScreen = GameScreen::MiniGameElecStart;
       break;
+    case MiniGameType::Crypto:
+      mGameCrypto->start(this->gameDifficulty);
+      this->currentMiniGame = miniGame;
+      this->inMiniGame = true;
+      this->currentScreen = GameScreen::MiniGameCryptoStart;
+      this->origScreen = OriginScreen::SkillPractice;  // crypto is a practice minigame
+      break;
     case MiniGameType::Combat:
     case MiniGameType::Driving:
-    case MiniGameType::Crypto:
     case MiniGameType::Inactive:
     default:
       // TODO: these minigames are not implemented; leave the caller where it was
@@ -417,22 +431,44 @@ void GameState::enterMiniGame(MiniGameType miniGame)
 
 void GameState::miniGameMove(int dx, int dy)
 {
-  if (!inMiniGame || currentMiniGame != MiniGameType::Elec || !mGameElec)  { return; }
-  mGameElec->moveCursor(dx, dy);
+  if (!inMiniGame)  { return; }
+  switch (currentMiniGame) {
+    case MiniGameType::Elec:
+      if (mGameElec)  { mGameElec->moveCursor(dx, dy); }
+      break;
+    case MiniGameType::Crypto:
+      if (mGameCrypto)  { mGameCrypto->moveCursor(dx, dy); }
+      break;
+    default:
+      break;
+  }
 }
 
 
 void GameState::miniGameRotate()
 {
-  if (!inMiniGame || currentMiniGame != MiniGameType::Elec || !mGameElec)  { return; }
-  mGameElec->rotateCursor();
-
-  // Rotating can finish the puzzle (all targets linked) or exhaust the turn
-  // budget (the trace completes). Anything else keeps the board open.
-  switch (mGameElec->outcome()) {
-    case ElecOutcome::Success:  finishMiniGame(ScreenExitCondition::PhoneBugged);  break;
-    case ElecOutcome::Alarm:    finishMiniGame(ScreenExitCondition::Lose);         break;
-    case ElecOutcome::InProgress:  break;
+  if (!inMiniGame)  { return; }
+  switch (currentMiniGame) {
+    case MiniGameType::Elec: {
+      if (!mGameElec)  { return; }
+      mGameElec->rotateCursor();
+      // Rotating can finish the puzzle (all targets linked) or exhaust the turn
+      // budget (the trace completes). Anything else keeps the board open.
+      switch (mGameElec->outcome()) {
+        case ElecOutcome::Success:  finishMiniGame(ScreenExitCondition::PhoneBugged);  break;
+        case ElecOutcome::Alarm:    finishMiniGame(ScreenExitCondition::Lose);         break;
+        case ElecOutcome::InProgress:  break;
+      }
+      break;
+    }
+    case MiniGameType::Crypto: {
+      if (!mGameCrypto)  { return; }
+      mGameCrypto->cycleLetter();
+      if (mGameCrypto->isSolved())  { finishMiniGame(ScreenExitCondition::Win); }
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -479,6 +515,49 @@ const char* junctionGlyph(Junction j)
 
 void GameState::drawMiniGame()
 {
+  if (currentMiniGame == MiniGameType::Crypto && mGameCrypto) {
+    centerText(CAColor::WHITE, "Cryptography - decode the message", 4);
+
+    // The intercepted message.
+    drawBox(CAColor::GREY, SDL_Rect{ 8, 18, 304, 58 });
+    const std::string& ct = mGameCrypto->cipherMessage();
+    const int wrapChars = 44;
+    for (int i = 0, line = 0; i < (int)ct.size(); i += wrapChars, ++line) {
+      drawText(CAColor::GREEN, ct.substr((std::size_t)i, (std::size_t)wrapChars).c_str(),
+               SDL_Point{ 12, 22 + line * UI_LINE_HEIGHT });
+    }
+
+    // The cipher alphabet, laid out as two rows of thirteen. Each cell shows the
+    // cipher letter above the player's guessed plaintext letter.
+    const int cellW = 24;
+    const int cellH = 30;
+    const int gridX = 4;
+    const int gridY = 88;
+    for (int i = 0; i < 26; ++i) {
+      const int col = i % 13;
+      const int row = i / 13;
+      const SDL_Rect cell{ gridX + col * cellW, gridY + row * cellH, cellW - 2, cellH - 6 };
+      const bool onCursor = (i == mGameCrypto->cursor());
+      fillBox(onCursor ? CAColor::YELLOW : CAColor::BLACK, cell);
+      drawBox(CAColor::DKGREY, cell);
+
+      const std::string top(1, (char)('A' + i));
+      const std::string bot(1, mGameCrypto->userLetter(i));
+      drawText(onCursor ? CAColor::BLACK : CAColor::WHITE, top.c_str(), SDL_Point{ cell.x + 7, cell.y + 1 });
+      drawText(onCursor ? CAColor::BLACK : CAColor::GREEN, bot.c_str(), SDL_Point{ cell.x + 7, cell.y + 13 });
+    }
+
+    char status[96];
+    std::snprintf(status, sizeof(status), "Cipher %c = %c  (%u in text)   Correct %d/26",
+                  (char)('A' + mGameCrypto->cursor()),
+                  mGameCrypto->userLetter(mGameCrypto->cursor()),
+                  mGameCrypto->frequency(mGameCrypto->cursor()),
+                  mGameCrypto->correctCount());
+    centerText(CAColor::GREY, status, 164);
+    centerText(CAColor::GREY, "Arrows pick  ENTER change  ESC leave", 180);
+    return;
+  }
+
   if (currentMiniGame != MiniGameType::Elec || !mGameElec) {
     centerText(CAColor::WHITE, "Minigame not implemented", 90);
     return;

@@ -460,15 +460,16 @@ void GUI::createGUI(GameScreen screen)
       break;
     case GameScreen::MiniGameCombatStart:
     case GameScreen::MiniGameDrivingStart:
-    case GameScreen::MiniGameCryptoStart:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKRED);
       centerText(CAColor::WHITE, screenName(screen), 40);
       centerText(CAColor::GREY, "Minigames are not implemented yet", 40 + UI_LINE_HEIGHT);
       break;
+    case GameScreen::MiniGameCryptoStart:
     case GameScreen::MiniGameElecStart:
-      // The electronics minigame is implemented; it draws itself and waits for
-      // the key handler (see DialogType::MINIGAME in covert.cpp).
+      // The crypto and electronics minigames are implemented; they draw
+      // themselves and wait for the key handler (see DialogType::MINIGAME in
+      // covert.cpp).
       dialogType = DialogType::MINIGAME;
       setBGColor(CAColor::BLACK);
       drawMiniGame();

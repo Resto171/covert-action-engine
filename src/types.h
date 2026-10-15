@@ -106,6 +106,7 @@ enum class OriginScreen : int {
   ChiefKickMaxOut,
   CIA,
   CityMenu,
+  SkillPractice,  // minigames launched from the practice menu
   UNKNOWNORIGIN = -1,
 };
 

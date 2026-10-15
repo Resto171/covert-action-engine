@@ -189,11 +189,10 @@ UTEST(cae, fsm_new_game_opening_sequence) {
 UTEST(cae, fsm_minigame_start_returns_to_skill_practice) {
     gameState = std::make_unique<GameState>();
 
-    // Combat/Driving/Crypto are still unimplemented and bounce back to practice.
+    // Combat/Driving are still unimplemented and bounce back to practice.
     const GameScreen starts[] = {
         GameScreen::MiniGameCombatStart,
         GameScreen::MiniGameDrivingStart,
-        GameScreen::MiniGameCryptoStart,
     };
     for (GameScreen start : starts) {
         gameState->currentScreen = start;
@@ -202,6 +201,46 @@ UTEST(cae, fsm_minigame_start_returns_to_skill_practice) {
         CAE_EXPECT_SCREEN(GameScreen::SkillPractice);
         EXPECT_EQ(0, gameState->modalSequence);
     }
+}
+
+
+// The cryptography minigame is wired up: entering its start screen begins the
+// minigame, and cancelling it returns to where it was launched from (the
+// practice menu).
+UTEST(cae, fsm_crypto_minigame_enter_and_cancel) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::MiniGameCryptoStart;
+
+    gameState->getNextScreen();
+    EXPECT_TRUE(gameState->inMiniGame);
+    EXPECT_EQ((int)MiniGameType::Crypto, (int)gameState->currentMiniGame);
+    CAE_EXPECT_SCREEN(GameScreen::MiniGameCryptoStart);
+    ASSERT_TRUE(gameState->cryptography() != nullptr);
+
+    // Input methods must be safe and only mutate state.
+    gameState->miniGameMove(1, 0);
+    gameState->miniGameMove(0, 1);
+    gameState->miniGameRotate();
+    EXPECT_TRUE(gameState->inMiniGame);
+
+    gameState->miniGameCancel();
+    EXPECT_TRUE(!gameState->inMiniGame);
+    EXPECT_EQ((int)MiniGameType::Inactive, (int)gameState->currentMiniGame);
+    CAE_EXPECT_SCREEN(GameScreen::SkillPractice);
+}
+
+
+// Choosing "Cryptography" from the practice menu must launch the minigame.
+UTEST(cae, fsm_skill_practice_starts_crypto) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::SkillPractice;
+    gameState->selectedChoice = 2;  // Cryptography
+    gameState->modalSequence = 2;   // the selection fires on the third tick
+
+    gameState->getNextScreen();
+    EXPECT_TRUE(gameState->inMiniGame);
+    EXPECT_EQ((int)MiniGameType::Crypto, (int)gameState->currentMiniGame);
+    CAE_EXPECT_SCREEN(GameScreen::MiniGameCryptoStart);
 }
 
 
@@ -440,5 +479,91 @@ UTEST(cae, elec_running_out_of_turns_finishes_with_alarm) {
     }
     EXPECT_TRUE(!gameState->inMiniGame);
     EXPECT_EQ((int)GameScreen::ElecModalAlarm, (int)gameState->currentScreen);
+}
+
+
+// ---------------------------------------------------------------------------
+// Cryptography minigame
+//
+// A random substitution cipher encrypts a message; the player maps cipher
+// letters to plaintext letters until the whole message decodes.
+// ---------------------------------------------------------------------------
+
+#include "../src/minigame/cryptography.h"
+
+UTEST(cae, crypto_key_is_a_permutation_with_inverse) {
+    MiniGameCryptography g;
+    g.start(Difficulty::Level1);
+
+    // The cipher must be a permutation of the alphabet...
+    int seen[26] = { 0 };
+    for (int i = 0; i < 26; ++i) {
+        const char c = g.cipherLetter(i);
+        EXPECT_TRUE(c >= 'A' && c <= 'Z');
+        seen[c - 'A']++;
+    }
+    for (int i = 0; i < 26; ++i)  { EXPECT_EQ(1, seen[i]); }
+
+    // ...and decipher_key must invert cipher_key.
+    for (int i = 0; i < 26; ++i) {
+        EXPECT_EQ((int)('A' + i), (int)g.decipherLetter(g.cipherLetter(i) - 'A'));
+    }
+}
+
+
+UTEST(cae, crypto_is_solved_only_when_every_letter_is_mapped) {
+    MiniGameCryptography g;
+    g.start(Difficulty::Level1);
+
+    EXPECT_TRUE(!g.isSolved());
+    EXPECT_TRUE(g.correctCount() < 26);
+
+    for (int i = 0; i < 26; ++i) {
+        g.setUserLetter(i, g.decipherLetter(i));
+    }
+    EXPECT_TRUE(g.isSolved());
+    EXPECT_EQ(26, g.correctCount());
+}
+
+
+UTEST(cae, crypto_cycle_and_cursor) {
+    MiniGameCryptography g;
+    g.start(Difficulty::Level1);
+
+    const int start = g.cursor();
+    g.moveCursor(1, 0);
+    EXPECT_EQ((start + 1) % 26, g.cursor());
+    g.moveCursor(-1, 0);
+    EXPECT_EQ(start, g.cursor());
+
+    // The guess cycles ' ' -> 'A' .. -> 'Z' -> ' '.
+    g.setUserLetter(g.cursor(), ' ');
+    g.cycleLetter();
+    EXPECT_EQ((int)'A', (int)g.userLetter(g.cursor()));
+    g.setUserLetter(g.cursor(), 'Z');
+    g.cycleLetter();
+    EXPECT_EQ((int)' ', (int)g.userLetter(g.cursor()));
+}
+
+
+UTEST(cae, crypto_solving_finishes_and_returns_to_practice) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::MiniGameCryptoStart;
+    gameState->getNextScreen();
+    ASSERT_TRUE(gameState->cryptography() != nullptr);
+
+    MiniGameCryptography* mg = gameState->cryptography();
+    // Map every letter except the one under the cursor; cycling will finish it.
+    const int cur = mg->cursor();
+    for (int i = 0; i < 26; ++i) {
+        if (i != cur)  { mg->setUserLetter(i, mg->decipherLetter(i)); }
+    }
+
+    int guard = 0;
+    while (gameState->inMiniGame && guard++ < 64) {
+        gameState->miniGameRotate();
+    }
+    EXPECT_TRUE(!gameState->inMiniGame);
+    EXPECT_EQ((int)GameScreen::SkillPractice, (int)gameState->currentScreen);
 }
 

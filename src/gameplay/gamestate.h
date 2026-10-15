@@ -3,6 +3,7 @@
 /// #include <functional>
 #include <memory>
 #include "../gui/gui.h"
+#include "../minigame/cryptography.h"
 #include "../minigame/electronics.h"
 
 class GameState : public GUI {
@@ -23,9 +24,10 @@ public:
   // Renders the running minigame (override of the GUI hook).
   void drawMiniGame() override;
 
-  // The electronics minigame instance (null until initMiniGameClasses runs).
-  // Exposed for the renderer and tests.
+  // The minigame instances (null until initMiniGameClasses runs). Exposed for
+  // the renderer and tests.
   MiniGameElectronics* electronics() { return mGameElec.get(); }
+  MiniGameCryptography* cryptography() { return mGameCrypto.get(); }
 
   // Minigame input, driven by the key handler. These only mutate game state;
   // the caller redraws afterwards.
@@ -48,6 +50,7 @@ public:
 
 private:
   std::unique_ptr<MiniGameElectronics> mGameElec;
+  std::unique_ptr<MiniGameCryptography> mGameCrypto;
 };
 
 
