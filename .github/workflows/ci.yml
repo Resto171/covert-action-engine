@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-msys2:
+    name: Windows (MSYS2 / MinGW-w64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 / MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-sdl2
+            mingw-w64-x86_64-sdl2_ttf
+            mingw-w64-x86_64-sdl2_mixer
+            mingw-w64-x86_64-sdl2_image
+            mingw-w64-x86_64-libpng
+
+      - name: Configure (windowed)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWERROR=ON
+
+      - name: Build (windowed)
+        run: cmake --build build
+
+      - name: Test (windowed)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Configure (headless)
+        run: cmake -S . -B build-nosdl -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNO_SDL=ON
+
+      - name: Build (headless)
+        run: cmake --build build-nosdl
+
+      - name: Test (headless)
+        run: ctest --test-dir build-nosdl --output-on-failure
+
+      - name: Smoke test (headless)
+        run: ./build-nosdl/covert-action-engine.exe < /dev/null
