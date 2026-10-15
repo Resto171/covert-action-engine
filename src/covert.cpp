@@ -1,6 +1,7 @@
-#define SDL_MAIN_HANDLED  // TODO: needed?
-
 #include "covert.h"
+
+#include <iostream>
+#include <string>
 
 #include "gameplay/gamestate.h"
 #include "gameplay/mainchar.h"
@@ -37,6 +38,14 @@ std::unique_ptr<GameState> gameState;
 extern void play_music(MidiFile);
 #endif
 
+// Move the finite state machine to its next screen and redraw. Shared by the
+// SDL key handler and the console (NO_SDL) driver.
+static void advanceScreen()
+{
+  gameState->getNextScreen();
+  gameState->createGUI(gameState->currentScreen);
+}
+
 static const SDL_Keycode mapDOWN = SDLK_DOWN;  // TODO: key mapping
 static const SDL_Keycode mapUP = SDLK_UP;
 static const SDL_Keycode mapLEFT = SDLK_LEFT;
@@ -52,6 +61,11 @@ void handler(SDL_Event& e);
 
 int do_covert()
 {
+#ifndef NO_SDL
+  SDL_SetMainReady();
+  SDL_Init(SDL_INIT_EVERYTHING);
+#endif
+
   mainChar = std::make_unique<MainChar>();
 
   gameState = std::make_unique<GameState>();
@@ -59,9 +73,6 @@ int do_covert()
   gameState->createGUI(gameState->currentScreen);
 
 #ifndef NO_SDL
-  SDL_SetMainReady();
-  SDL_Init(SDL_INIT_EVERYTHING);
-
   play_music(MidiFile::Intro);
 #endif
 
@@ -70,6 +81,8 @@ int do_covert()
   bool quit = false;
 #ifndef NO_SDL
   SDL_Event e;
+#else
+  std::string line;
 #endif
   while(!quit) {
     if ( gameState->guiShouldRefresh() ) {  // TODO-debug
@@ -90,9 +103,38 @@ int do_covert()
       }  // e->type
     }
 #else
-	// TODO: Get to OS exit first, replace this with non-SDL event handler, restore infinite loop
-	/// while(1)  {}
+    // Console-only driver: read a line from stdin and translate it into the
+    // same actions the SDL key handler performs. EOF exits the program.
+    if (!std::getline(std::cin, line)) {
+      quit = true;
+      break;
+    }
+    const char ch = line.empty() ? '\n' : line[0];
+    switch (gameState->dialogType) {
+      case DialogType::INFOTIMER:
+        break;  // advanced automatically by guiShouldRefresh()
+      case DialogType::MENU:
+      case DialogType::MINIMENU:
+        if (ch == 'w' || ch == 'W') {
+          gameState->chooseMenuPrev();
+          gameState->createGUI(gameState->currentScreen);
+        } else if (ch == 's' || ch == 'S') {
+          gameState->chooseMenuNext();
+          gameState->createGUI(gameState->currentScreen);
+        } else if (ch == 'q') {
+          gameState->selectMenuDefault();
+          advanceScreen();
+        } else {
+          gameState->selectMenuState();
+          advanceScreen();
+        }
+        break;
+      default:
+        advanceScreen();
+        break;
+    }
 #endif
+    if ( gameState->shouldQuit ) { quit = true; }
   }
 
   SDL_Quit();  // TODO: replace with each subsystem quit by ref?
@@ -102,46 +144,55 @@ int do_covert()
 
 #ifndef NO_SDL
 namespace kbd {
+void advance() {
+  advanceScreen();
+}
+
 void handler(SDL_Event& e) {
   switch ( gameState->dialogType ) {
     case DialogType::INFOTIMER:
+      // Timer-driven screens (splashes) advance themselves; ignore key presses.
+      break;
     case DialogType::INFO:
-      switch (e.key.keysym.sym) {
-        default:
-          printf("%ld\n", static_cast<unsigned long>(e.key.keysym.sym));  // TODO: clean this shit up
-          break;
-      }
+      // Informational screens advance on any key press.
+      // TODO: distinguish per-screen behavior instead of "any key".
+      advance();
       break;
     case DialogType::MENU:
     case DialogType::MINIMENU:
       switch (e.key.keysym.sym) {
         case mapDOWN:
-          printf("down\n");
           gameState->chooseMenuNext();
+          gameState->createGUI(gameState->currentScreen);
           break;
         case mapUP:
-          printf("up\n");
           gameState->chooseMenuPrev();
+          gameState->createGUI(gameState->currentScreen);
           break;
         case mapENTER:
           gameState->selectMenuState();
-          gameState->getNextScreen();
+          advance();
+          break;
         case mapESC:
           gameState->selectMenuDefault();
-          gameState->getNextScreen();
+          advance();
+          break;
+        default:
+          break;
       }  // ...keysym.sym
-      gameState->createGUI(gameState->currentScreen);
       break;
     case DialogType::TEXTENTRY:
-      // TODO
+      // TODO: real text entry. For now any key accepts and advances.
+      advance();
       break;
     case DialogType::SKILLSELECT:
       switch (e.key.keysym.sym) {  // TODO
         case mapLEFT:
-          printf("L\n");
-          break;
         case mapRIGHT:
-          printf("R\n");
+          // TODO: change the highlighted skill level
+          break;
+        default:
+          advance();
           break;
       }  // ...keysym.sym
       break;

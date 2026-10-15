@@ -1,5 +1,4 @@
 #ifndef NO_SDL
-#define SDL_MAIN_HANDLED
 #include <SDL_mixer.h>
 /// #include <SDL.h>
 

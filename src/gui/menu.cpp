@@ -1,27 +1,30 @@
 #include "menu.h"
 
+#include <utility>
+
 std::vector<MenuChoice> buildMenu(std::vector<std::string> choice_strings) {
     std::vector<MenuChoice> menu_constructor;
-    MenuChoice this_menu_choice;
+    menu_constructor.reserve(choice_strings.size());
 
-    int idx = 0;
-    for (auto& choicestring : choice_strings) {
-        this_menu_choice.id = idx + 1;
-        this_menu_choice.txt = std::move(choicestring);
-        this_menu_choice.selected = !idx;  // First choice selected by default
-
-        menu_constructor.push_back(this_menu_choice);
-        idx++;
+    for (std::size_t i = 0; i < choice_strings.size(); i++) {
+        MenuChoice this_menu_choice;
+        this_menu_choice.id = static_cast<int>(i);  // 0-based: matches GameState::selectedChoice
+        this_menu_choice.txt = std::move(choice_strings[i]);
+        this_menu_choice.selected = (i == 0);  // First choice selected by default
+        this_menu_choice.prev = 0;
+        this_menu_choice.next = 0;
+        menu_constructor.push_back(std::move(this_menu_choice));
     }
 
-    menu_constructor[0].prev = &menu_constructor[0];
-    for (int i = idx - 1; i > 0; i--) {
-        menu_constructor[i].prev = &menu_constructor[i - 1];
+    if (menu_constructor.empty()) {
+        return menu_constructor;
     }
 
-    menu_constructor[idx - 1].next = &menu_constructor[idx - 1];
-    for (int i = 1; i < idx; i++) {
-        menu_constructor[i - 1].next = &menu_constructor[i];
+    const int last = static_cast<int>(menu_constructor.size()) - 1;
+    // Link neighbours by index (no raw pointers into storage that may move).
+    for (int i = 0; i <= last; i++) {
+        menu_constructor[i].prev = (i == 0) ? 0 : i - 1;
+        menu_constructor[i].next = (i == last) ? last : i + 1;
     }
 
     return menu_constructor;

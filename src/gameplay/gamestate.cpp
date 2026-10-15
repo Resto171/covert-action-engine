@@ -141,14 +141,14 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         break;
       case GameScreen::BeginMenu:
         std::cout << "Leaving menu, choice " << selectedChoice << " active." << std::endl;
-        if (this->selectedChoice == 0 ||
-            this->selectedChoice == 1)  { currentScreen = GameScreen::NewCharacter; }
-        if (this->selectedChoice == 2)  { currentScreen = GameScreen::Load; }
-        if (this->selectedChoice == 3)  { currentScreen = GameScreen::SkillPractice; }
-        if (this->selectedChoice == 4)  { currentScreen = GameScreen::HallOfFame; }
+        if (this->selectedChoice == 0)  { currentScreen = GameScreen::NewCharacter; }
+        if (this->selectedChoice == 1)  { currentScreen = GameScreen::Load; }
+        if (this->selectedChoice == 2)  { currentScreen = GameScreen::SkillPractice; }
+        if (this->selectedChoice == 3)  { currentScreen = GameScreen::HallOfFame; }
         break;
       case GameScreen::Load:
-        currentScreen = GameScreen::UNKNOWN;
+        // TODO: save/load not implemented; return to the main menu instead of dying.
+        currentScreen = GameScreen::BeginMenu;
         break;
       case GameScreen::SkillPractice:  // TODO
         (this->modalSequence)++;  // TODO: this double-increments currently (FIXME) using ENTER but not ESC
@@ -156,15 +156,15 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         // TODO: set origScreen to BeginMenu
         // TODO: how to deal with the transition from not in minigame into the minigame??
         if (this->modalSequence == 3) {
-          if (this->selectedChoice == 1)  { currentScreen = GameScreen::MiniGameCombatStart; }
-          if (this->selectedChoice == 2)  { currentScreen = GameScreen::MiniGameDrivingStart; }
-          if (this->selectedChoice == 3)  { currentScreen = GameScreen::MiniGameCryptoStart; }
-          if (this->selectedChoice == 4)  { currentScreen = GameScreen::MiniGameElecStart; }
+          if (this->selectedChoice == 0)  { currentScreen = GameScreen::MiniGameCombatStart; }
+          if (this->selectedChoice == 1)  { currentScreen = GameScreen::MiniGameDrivingStart; }
+          if (this->selectedChoice == 2)  { currentScreen = GameScreen::MiniGameCryptoStart; }
+          if (this->selectedChoice == 3)  { currentScreen = GameScreen::MiniGameElecStart; }
         }
         // TODO: default?
         break;
       case GameScreen::HallOfFame:  // TODO
-        currentScreen = GameScreen::UNKNOWN;
+        currentScreen = GameScreen::BeginMenu;
         break;
       case GameScreen::NewCharacter:
         (this->modalSequence)++;
@@ -204,7 +204,7 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         currentScreen = GameScreen::CIASam;
         break;
       case GameScreen::CIAMainMenu:
-        if (this->selectedChoice == 0)  { currentScreen = GameScreen::CityMainMenu; }
+        if (this->selectedChoice == 0)  { this->origScreen = OriginScreen::CityMenu; currentScreen = GameScreen::CityMainMenu; }
         if (this->selectedChoice == 1)  { currentScreen = GameScreen::CIAData; }
         if (this->selectedChoice == 2)  { currentScreen = GameScreen::CIAIntel; }
         if (this->selectedChoice == 3)  { currentScreen = GameScreen::CIACrypto; }
@@ -218,6 +218,7 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->selectedChoice == 5)  { currentScreen = GameScreen::ReviewOrg; }
         if (this->selectedChoice == 6)  { currentScreen = GameScreen::ReviewCity; }
         if (this->selectedChoice == 7)  { currentScreen = GameScreen::ReviewActivity; }
+        break;
       case GameScreen::CIAIntel:
         if (this->selectedChoice == 0)  { currentScreen = GameScreen::CIAMainMenu; }
         if (this->selectedChoice == 1 ||
@@ -243,18 +244,25 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         // TODO
         break;
       case GameScreen::CodedMessages:
+        currentScreen = GameScreen::CIACrypto;
         break;
       case GameScreen::CrimeChronology:
+        currentScreen = GameScreen::CIACrypto;
         break;
       case GameScreen::CIAAddBan:
         currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::CityMainMenu:
-        // TODO: airport, hotel, ..., data
+        if (this->selectedChoice == 0)  { currentScreen = GameScreen::CIAContact; }
+        if (this->selectedChoice == 1)  { currentScreen = GameScreen::Airport; }
+        if (this->selectedChoice == 2)  { currentScreen = GameScreen::Hotel; }
+        if (this->selectedChoice == 3)  { currentScreen = GameScreen::Building1; }
+        if (this->selectedChoice == 4)  { currentScreen = GameScreen::GameExitModal; }
         break;
       case GameScreen::Airport:
         /* TODO: show animation */
         /* TODO: change current city */
+        this->origScreen = OriginScreen::CityMenu;
         currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::Hotel:
@@ -270,6 +278,8 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->selectedChoice == 7)  { currentScreen = GameScreen::GameExitModal; }
         break;
       case GameScreen::LoadSave:
+        // TODO: save/load not implemented yet; return to the hotel.
+        currentScreen = GameScreen::Hotel;
         break;
       case GameScreen::ReviewClues:
       case GameScreen::ReviewSuspects:
@@ -291,30 +301,55 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         // TODO: watch should go back to the correct building
         if (this->selectedChoice == 3)  { currentScreen = GameScreen::BuildingWatch; }
         if (this->selectedChoice == 4)  { currentScreen = GameScreen::CityMainMenu; }
-        if (this->selectedChoice == 5)  { currentScreen = GameScreen::TODO; }
+        break;
+      case GameScreen::BuildingWatch:
+        currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::CombatArrest:
+        currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::CombatRecover:
+        currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::CombatCaptive:
+        currentScreen = GameScreen::CityMainMenu;
+        break;
+      case GameScreen::HotelLoungeModal:
+      case GameScreen::HotelSleepThruCase:
+      case GameScreen::NewGameMaybe:
+        currentScreen = GameScreen::Hotel;
+        break;
+      case GameScreen::DrivingCarSelect:
+      case GameScreen::DrivingArrest:
+      case GameScreen::DrivingTargetGone:
+      case GameScreen::DrivingShootout:
+      case GameScreen::DrivingEscapedPursuer:
+        currentScreen = GameScreen::CityMainMenu;
+        break;
+      case GameScreen::ElecModalBugged:
+      case GameScreen::ElecModalTrace:
+      case GameScreen::ElecModalAlarm:
+        currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::Typewriter:
+        currentScreen = GameScreen::CityMainMenu;
         break;
       case GameScreen::GameExitModal:
         currentScreen = GameScreen::GameExit;
         break;
       case GameScreen::GameExit:
+        this->shouldQuit = true;
         break;
       case GameScreen::ReviewWiretaps:
+        currentScreen = GameScreen::CIAIntel;
         break;
       case GameScreen::MiniGameCombatStart:
-        break;
       case GameScreen::MiniGameDrivingStart:
-        break;
       case GameScreen::MiniGameCryptoStart:
-        break;
       case GameScreen::MiniGameElecStart:
+        // TODO: actually run the minigame. For now return to skill practice.
+        currentScreen = GameScreen::SkillPractice;
+        this->modalSequence = 0;
         break;
       case GameScreen::UNKNOWN:  // TODO
       default:
@@ -325,23 +360,21 @@ void GameState::getNextScreen(ScreenExitCondition condition)
 }
 
 
-GameScreen goBackFrom(OriginScreen os)
+GameScreen GameState::goBackFrom(OriginScreen os)
 {
-  GameScreen gs;
+  // Returns the screen that spawned the current modal/review screen.
   switch (os) {
     case OriginScreen::ChiefCaseIntro:
-      break;
     case OriginScreen::ChiefInfoHandout:
-      break;
     case OriginScreen::ChiefKickMaxOut:
-      break;
+      return GameScreen::Chief;
     case OriginScreen::CIA:
-      break;
+      return GameScreen::CIAMainMenu;
     case OriginScreen::CityMenu:
-      break;
+      return GameScreen::CityMainMenu;
     case OriginScreen::UNKNOWNORIGIN:
     default:
-      break;
+      return GameScreen::CityMainMenu;
   }
 }
 

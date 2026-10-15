@@ -2,6 +2,7 @@
 .swp
 
 build/
+build-nosdl/
 cmake-build-debug/
 data/
 doxygen/

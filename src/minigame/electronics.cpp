@@ -66,7 +66,7 @@ void MiniGameElectronics::draw() {
 
 
 Difficulty MiniGameElectronics::getGameDifficulty() {
-  Difficulty d;
+  Difficulty d = Difficulty::Level1;  // TODO: read from game state
 
 ///   d = gameState->getGameDifficulty();
 

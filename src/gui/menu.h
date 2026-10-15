@@ -6,11 +6,11 @@
 /* TODO: add menu defs, font, keyboard handler, anims, etc. */
 
 struct MenuChoice {
-    int id;
-    bool selected;
+    int id { 0 };
+    bool selected { false };
     std::string txt;
-    MenuChoice* prev;
-    MenuChoice* next;
+    int prev { 0 };
+    int next { 0 };
 };
 
 std::vector<MenuChoice> buildMenu(std::vector<std::string> choice_strings);

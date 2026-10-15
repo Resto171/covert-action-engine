@@ -1,6 +1,7 @@
 #pragma once
 
-/// #include <string>
+#include <cstdint>
+#include <string>
 
 #ifndef NO_SDL
 #include <SDL_image.h>

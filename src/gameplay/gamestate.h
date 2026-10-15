@@ -21,9 +21,10 @@ public:
 
   MiniGameType currentMiniGame { MiniGameType::Inactive };
   GameScreen currentScreen { GameScreen::Splash1 };
-  bool inMiniGame;
+  bool inMiniGame { false };
   bool isTwelve { true };
+  bool shouldQuit { false };
   OriginScreen origScreen { OriginScreen::UNKNOWNORIGIN };
   int modalSequence { 0 };
-  Difficulty gameDifficulty;
+  Difficulty gameDifficulty { Difficulty::Level1 };
 };

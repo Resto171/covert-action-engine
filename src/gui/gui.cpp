@@ -6,6 +6,11 @@ uint64_t SDL_GetTicks64()  { return 0; }
 
 #include "gui.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <utility>
+
 std::unique_ptr<GUI> gui;
 
 namespace CAColor {
@@ -34,6 +39,31 @@ static const SDL_Color colors[] = {
     CAColor::BLUE, CAColor::MAGENTA, CAColor::CYAN, CAColor::WHITE
 };
 
+namespace {
+// Screen names indexed by GameScreen (declaration order in types.h).
+// Used for the console (NO_SDL) output and for placeholder labels.
+const char* const kScreenNames[] = {
+    "Splash1", "Splash2", "BeginMenu", "NewCharacter", "Load", "SkillPractice",
+    "HallOfFame", "SkillUpgrade", "Chief", "MastermindLineup", "ShowNewClues",
+    "CIAContact", "CIAMainMenu", "CIAData", "ReviewClues", "ReviewSuspects",
+    "ReviewInsideInfo", "ReviewNews", "ReviewOrg", "ReviewCity", "ReviewActivity",
+    "CIAIntel", "CIAAddBan", "ReviewWiretaps", "CIASam", "CIACrypto",
+    "CodedMessages", "CrimeChronology", "CityMainMenu", "Airport", "Hotel",
+    "HotelLoungeModal", "NewGameMaybe", "HotelSleepThruCase", "LoadSave",
+    "Building1", "Building2", "Building3", "Building4", "Building5", "BuildingWatch",
+    "Typewriter", "MiniGameCombatStart", "CombatArrest", "CombatRecover", "CombatCaptive",
+    "MiniGameDrivingStart", "DrivingCarSelect", "DrivingArrest", "DrivingTargetGone",
+    "DrivingShootout", "DrivingEscapedPursuer", "MiniGameCryptoStart", "MiniGameElecStart",
+    "ElecModalBugged", "ElecModalTrace", "ElecModalAlarm", "GameExitModal", "GameExit",
+};
+
+const char* screenName(GameScreen s) {
+  const int idx = static_cast<int>(s);
+  const int count = static_cast<int>(sizeof(kScreenNames) / sizeof(kScreenNames[0]));
+  return (idx >= 0 && idx < count) ? kScreenNames[idx] : "UNKNOWN";
+}
+}  // namespace
+
 
 void GUI::initGUI()
 {
@@ -43,12 +73,32 @@ void GUI::initGUI()
 
   TTF_Init();  // TODO: move to Font class
 
-// TODO
-  const char* fname = "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf";
-//  const char* fname = "C:\\Windows\\Fonts\\LiberationMono-Regular.ttf";
-  ttf = TTF_OpenFont(fname, 8);
-  if (ttf == NULL) {
-    fprintf(stderr, "fonterr\n");
+  // TODO: bundle a font with the game instead of relying on the system.
+  const char* windir = std::getenv("WINDIR");
+  const std::string win_fonts = std::string(windir ? windir : "C:\\Windows") + "\\Fonts\\";
+
+  const std::string candidates[] = {
+    win_fonts + "consola.ttf",  // Consolas
+    win_fonts + "lucon.ttf",    // Lucida Console
+    win_fonts + "cour.ttf",     // Courier New
+    win_fonts + "arial.ttf",    // Arial
+    "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
+    "test.ttf",
+  };
+
+  ttf = nullptr;
+  for (const std::string& fname : candidates) {
+    ttf = TTF_OpenFont(fname.c_str(), 8);
+    if (ttf != nullptr) {
+      fprintf(stdout, "Loaded font: %s\n", fname.c_str());
+      break;
+    }
+  }
+  if (ttf == nullptr) {
+    fprintf(stderr, "Could not load a font. Tried:\n");
+    for (const std::string& fname : candidates) {
+      fprintf(stderr, "  %s\n", fname.c_str());
+    }
     exit(EXIT_FAILURE);
   }
 
@@ -111,7 +161,7 @@ void GUI::drawText(const SDL_Color c, const char* txt, const SDL_Point pt)
 
 void GUI::centerText(const SDL_Color c, const char* txt, const int y)
 {
-  int w;
+  int w = 0;
 #ifndef NO_SDL
   TTF_SizeText(ttf, txt, &w, nullptr);
 #endif
@@ -122,42 +172,37 @@ void GUI::centerText(const SDL_Color c, const char* txt, const int y)
 #ifndef NO_SDL
 bool GUI::guiShouldRefresh()  { return dialogType == DialogType::INFOTIMER && SDL_GetTicks64() >= next_screen_tick; }
 #else
-bool GUI::guiShouldRefresh()  { return true; }
+// Console-only: timer screens advance automatically each iteration; everything
+// else waits for input. (No real clock in the NO_SDL build.)
+bool GUI::guiShouldRefresh()  { return dialogType == DialogType::INFOTIMER; }
 #endif
 
 
 void GUI::createGUI(GameScreen screen)
 {
+  // Entering a different screen invalidates any menu state built for the previous one.
+  if (screen != this->currentMenuScreen) {
+    this->currentMenu.clear();
+    this->currentMenuScreen = screen;
+  }
+
 #ifdef NO_SDL
-  constexpr char* screenstring[] = {"Splash1", "Splash2", "BeginMenu", "NewCharacter", "Load", "SkillPractice", "HallOfFame", "SkillUpgrade", "Chief", "MastermindLineup", "ShowNewClues", "CIAContact", "CIAMainMenu", "CIAData", "ReviewClues", "ReviewSuspects", "ReviewInsideInfo", "ReviewNews", "ReviewOrg", "ReviewCity", "ReviewActivity", "CIAIntel", "CIABanned", "ReviewWiretaps", "CIASam", "CIACrypto", "CodedMessages", "CrimeChronology", "CityMainMenu", "Airport", "Hotel", "LoadSave", "Building1", "Building2", "Building3", "Building4", "Building5", "Typewriter", "MiniGameCombatStart", "CombatArrest", "CombatRecover", "CombatCaptive", "MiniGameDrivingStart", "DrivingCarSelect", "MiniGameCryptoStart", "MiniGameElecStart", "GameExit"};
-  fprintf(stdout, " [ %s ]\n", screenstring[(int)screen]);
+  fprintf(stdout, " [ %s ]\n", screenName(screen));
 #endif
+
+  // Default timer delay for INFOTIMER screens. Screens that want a different
+  // delay overwrite next_screen_tick below.
+  next_screen_tick = 200 + SDL_GetTicks64();
+
   switch (screen) {
-    case GameScreen::Building1:
-    building_common:
-///       createGUIMenu(buildMenu({"Place wiretap", "Break into building", "Watch the building", "Check Data", "Leave"}), SDL_Point(xy));
-      break;
-    case GameScreen::Building2:
-      goto building_common;
-    case GameScreen::Building3:
-      goto building_common;
-    case GameScreen::Building4:
-      goto building_common;
-    case GameScreen::Building5:
-      goto building_common;
-    case GameScreen::LoadSave:
-///       choice_strings = show_game_files();  // TODO-debug
-///       createGUIMenu(choice_strings, SDL_Point(xy));
-      // TODO: After user chooses an item: load_game(n); where n = <0..4>
-      break;
     case GameScreen::Splash1:
+      dialogType = DialogType::INFOTIMER;
       setBGColor(CAColor::GREEN);
-      next_screen_tick = 200 + SDL_GetTicks64();
       centerText(CAColor::WHITE, "Covert Action", 5);
       break;
     case GameScreen::Splash2:
+      dialogType = DialogType::INFOTIMER;
       setBGColor(CAColor::BLUE);
-      next_screen_tick = 200 + SDL_GetTicks64();
       centerText(CAColor::WHITE, "Credits", 5);
       break;
     case GameScreen::BeginMenu:
@@ -165,41 +210,42 @@ void GUI::createGUI(GameScreen screen)
 #ifdef PLACEHOLDERS
       _imagePlaceholder(15, 5, 20, 15);
 #endif
-      dialogType = DialogType::MINIMENU;
       drawBox(CAColor::WHITE, SDL_Rect{97, 76, 125, 46});
       drawText(CAColor::WHITE, "Do you want to...", SDL_Point{102, 80});
-      if (currentMenu.empty()) {
-        currentMenu = buildMenu({" Create a New Character", " Load a Saved Game", " Practice a skill", " Review Hall of Fame"});
-      }
-      updateGUIMenu(currentMenu, SDL_Rect{102, 88, 115, 1});
-      // TODO: Create menu
+      screenMenu(screen, {" Create a New Character", " Load a Saved Game", " Practice a skill", " Review Hall of Fame"},
+                 SDL_Rect{102, 88, 115, 1});
       break;
     case GameScreen::NewCharacter:
       dialogType = DialogType::TEXTENTRY;
       setBGColor(CAColor::RED);
+      centerText(CAColor::WHITE, "Enter your name ...", 40);
+      // TODO: real text entry
       break;
     case GameScreen::SkillUpgrade:
       dialogType = DialogType::SKILLSELECT;
+      setBGColor(CAColor::DKBLUE);
+      centerText(CAColor::WHITE, "Assign skill points", 20);
+      centerText(CAColor::GREY, "(left/right to change, any other key to continue)", 30);
+      // TODO: skill list and point allocation
       break;
     case GameScreen::Load:
-      dialogType = DialogType::MENU;
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKGREY);
+      centerText(CAColor::WHITE, "Loading is not implemented yet", 40);
+      centerText(CAColor::GREY, "Press any key to return to the menu", 50);
       break;
     case GameScreen::SkillPractice:
-      dialogType = DialogType::MINIMENU;
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Practice a skill", 30);
+      screenMenu(screen, {" Combat", " Driving", " Cryptography", " Electronics"},
+                 SDL_Rect{120, 50, 100, 1});
       break;
     case GameScreen::HallOfFame:
       dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      centerText(CAColor::WHITE, "Review Hall of Fame", 40);
+      centerText(CAColor::GREY, "Press any key to return to the menu", 50);
       break;
-    case GameScreen::CIAData:
-///       createGUIMenu(buildMenu(
-///           {"Review Clues", "Review Suspects", "Inside Information", "News Bulletins", "Organization Summary",
-///            "City Summary", "Activity Reports"}), xy);
-      break;
-    case GameScreen::CIAIntel:
-///       createGUIMenu(
-///           buildMenu({"Local Scan", "International Scan", "Active Wire Taps", "Accuse Double Agent", "Check with Sam"}), xy);
-      break;
-
     case GameScreen::Chief:
       setBGColor(CAColor::BLACK);
 #ifdef PLACEHOLDERS
@@ -208,13 +254,12 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       drawBox(CAColor::WHITE, SDL_Rect{1, 101, 318, 98});
       drawText(CAColor::WHITE, "Chief says ...", SDL_Point{4, 104});
-	  break;
-      /* UNUSED CASES */
+      break;
     case GameScreen::MastermindLineup:
       dialogType = DialogType::MENU;
       setBGColor(CAColor::BLACK);
-      drawText(CAColor::WHITE, "Max, I'm sure you recognize the head of", SDL_Point{40, 16});
-      drawText(CAColor::WHITE, "the TODO among these faces", SDL_Point{40, 24});
+      drawText(CAColor::WHITE, "Max, I'm sure you recognize the head of", SDL_Point{24, 8});
+      drawText(CAColor::WHITE, "this organization among these faces.", SDL_Point{24, 16});
 #ifdef PLACEHOLDERS
       _imagePlaceholder( 28,  32, 44, 44);
       _imagePlaceholder( 83,  32, 44, 44);
@@ -232,17 +277,61 @@ void GUI::createGUI(GameScreen screen)
       _imagePlaceholder(193, 144, 44, 44);
       _imagePlaceholder(248, 144, 44, 44);
 #endif
-	  break;
+      screenMenu(screen, {" Confirm"}, SDL_Rect{136, 190, 48, 1});
+      break;
     case GameScreen::ShowNewClues:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      drawBox(CAColor::WHITE, SDL_Rect{10, 10, 300, 180});
+      drawText(CAColor::WHITE, "New clues have arrived.", SDL_Point{14, 14});
+      centerText(CAColor::GREY, "Press any key to continue", 180);
+      break;
     case GameScreen::CIAContact:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKGREEN);
+      centerText(CAColor::WHITE, "CIA field office", 40);
+      centerText(CAColor::GREY, "Press any key ...", 50);
+      break;
     case GameScreen::CIAMainMenu:
-    case GameScreen::CIASam:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Field Office", 8);
+      screenMenu(screen, {" Leave (return to city)", " Review Data", " Intelligence", " Cryptography"},
+                 SDL_Rect{90, 30, 140, 1});
+      break;
+    case GameScreen::CIAData:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Review Data", 8);
+      screenMenu(screen, {" Return to Main Menu", " Review Clues", " Review Suspects",
+                          " Inside Information", " News Bulletins", " Organization Summary",
+                          " City Summary", " Activity Reports"},
+                 SDL_Rect{90, 30, 140, 1});
+      break;
+    case GameScreen::CIAIntel:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Intelligence", 8);
+      screenMenu(screen, {" Return to Main Menu", " Local Scan", " International Scan",
+                          " Active Wire Taps", " Accuse Double Agent", " Check with Sam"},
+                 SDL_Rect{90, 30, 140, 1});
+      break;
     case GameScreen::CIACrypto:
-    case GameScreen::CityMainMenu:
-    case GameScreen::CombatArrest:
-    case GameScreen::CombatRecover:
-    case GameScreen::CombatCaptive:
-    case GameScreen::Hotel:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Cryptography", 8);
+      screenMenu(screen, {" Return to Main Menu", " Coded Messages", " Crime Chronology"},
+                 SDL_Rect{90, 30, 140, 1});
+      break;
+    case GameScreen::CodedMessages:
+    case GameScreen::CrimeChronology:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      centerText(CAColor::WHITE, screenName(screen), 40);
+      centerText(CAColor::GREY, "Press any key to go back", 50);
+      break;
+    case GameScreen::CIASam:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      centerText(CAColor::WHITE, "Sam: nothing new to report.", 40);
+      centerText(CAColor::GREY, "Press any key ...", 50);
+      break;
     case GameScreen::ReviewClues:
     case GameScreen::ReviewSuspects:
     case GameScreen::ReviewInsideInfo:
@@ -250,11 +339,117 @@ void GUI::createGUI(GameScreen screen)
     case GameScreen::ReviewOrg:
     case GameScreen::ReviewCity:
     case GameScreen::ReviewActivity:
+    case GameScreen::ReviewWiretaps:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      drawBox(CAColor::WHITE, SDL_Rect{10, 10, 300, 180});
+      drawText(CAColor::WHITE, screenName(screen), SDL_Point{14, 14});
+      centerText(CAColor::GREY, "Press any key to go back", 180);
+      break;
+    case GameScreen::CIAAddBan:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKRED);
+      centerText(CAColor::WHITE, "You are banned from the CIA office", 40);
+      break;
+    case GameScreen::CityMainMenu:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "City", 8);
+      screenMenu(screen, {" CIA Office", " Airport", " Hotel", " Building 1", " Quit"},
+                 SDL_Rect{120, 30, 90, 1});
+      break;
+    case GameScreen::Airport:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKCYAN);
+      centerText(CAColor::WHITE, "Airport", 40);
+      centerText(CAColor::GREY, "Travel is not implemented yet", 50);
+      break;
+    case GameScreen::Hotel:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Hotel", 8);
+      // TODO: double check the order against the original game.
+      screenMenu(screen, {" Leave the hotel", " Sit in the lounge", " Check out", " Save / Load",
+                          " Sleep through the case", " Start a new game", " More...", " Quit"},
+                 SDL_Rect{90, 30, 140, 1});
+      break;
+    case GameScreen::HotelLoungeModal:
+    case GameScreen::NewGameMaybe:
+    case GameScreen::HotelSleepThruCase:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKGREY);
+      centerText(CAColor::WHITE, screenName(screen), 40);
+      centerText(CAColor::GREY, "Press any key to go back", 50);
+      break;
+    case GameScreen::LoadSave:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKGREY);
+      centerText(CAColor::WHITE, "Save / Load", 40);
+      centerText(CAColor::GREY, "Press any key to go back", 50);
+      break;
+    case GameScreen::Building1:
+    case GameScreen::Building2:
+    case GameScreen::Building3:
+    case GameScreen::Building4:
+    case GameScreen::Building5:
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, screenName(screen), 8);
+      screenMenu(screen, {" Place wiretap", " Break into building", " Watch the building",
+                          " Check Data", " Leave"},
+                 SDL_Rect{100, 30, 120, 1});
+      break;
+    case GameScreen::BuildingWatch:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKGREEN);
+      centerText(CAColor::WHITE, "Watching the building ...", 40);
+      centerText(CAColor::GREY, "Press any key to stop", 50);
+      break;
     case GameScreen::Typewriter:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Typewriter", 40);
+      centerText(CAColor::GREY, "Press any key ...", 50);
+      break;
+    case GameScreen::CombatArrest:
+    case GameScreen::CombatRecover:
+    case GameScreen::CombatCaptive:
+    case GameScreen::DrivingCarSelect:
+    case GameScreen::DrivingArrest:
+    case GameScreen::DrivingTargetGone:
+    case GameScreen::DrivingShootout:
+    case GameScreen::DrivingEscapedPursuer:
+    case GameScreen::ElecModalBugged:
+    case GameScreen::ElecModalTrace:
+    case GameScreen::ElecModalAlarm:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      centerText(CAColor::WHITE, screenName(screen), 40);
+      centerText(CAColor::GREY, "Press any key ...", 50);
+      break;
+    case GameScreen::MiniGameCombatStart:
+    case GameScreen::MiniGameDrivingStart:
+    case GameScreen::MiniGameCryptoStart:
+    case GameScreen::MiniGameElecStart:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKRED);
+      centerText(CAColor::WHITE, screenName(screen), 40);
+      centerText(CAColor::GREY, "Minigames are not implemented yet", 50);
+      break;
+    case GameScreen::GameExitModal:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Thanks for playing", 40);
+      break;
     case GameScreen::GameExit:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Exiting ...", 40);
+      break;
+    case GameScreen::UNKNOWN:
     default:
-      /// throw std::runtime_error("unhandled game screen");
-      exit(EXIT_FAILURE);
+      // Never terminate the process from a render path; show a placeholder instead.
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKRED);
+      centerText(CAColor::WHITE, "Unhandled screen (placeholder)", 40);
+      centerText(CAColor::GREY, "Press any key to return to the city", 50);
       break;
   }
 #ifndef NO_SDL
@@ -281,6 +476,21 @@ void GUI::createGUIMenu(std::vector<std::string> choice_strings, const SDL_Rect 
 }
 
 
+// Build (or reuse) the menu for a screen and draw it.
+// The menu is only rebuilt when the screen changes, so the highlighted item
+// is preserved across redraws.
+void GUI::screenMenu(GameScreen screen, std::vector<std::string> choice_strings, const SDL_Rect r0)
+{
+  dialogType = DialogType::MINIMENU;
+  if (currentMenu.empty() || currentMenuScreen != screen) {
+    currentMenu = buildMenu(std::move(choice_strings));
+    currentMenuScreen = screen;
+    selectedChoice = 0;
+  }
+  updateGUIMenu(currentMenu, r0);
+}
+
+
 void GUI::updateGUIMenu(const std::vector<MenuChoice> choices, SDL_Rect r0)
 {
   SDL_Point pt { r0.x , r0.y };
@@ -299,7 +509,7 @@ void GUI::chooseMenuPrev()
   for (auto& choice : currentMenu) {
     if (choice.selected) {
       choice.selected = false;
-      choice.prev->selected = true;
+      currentMenu[choice.prev].selected = true;
       return;
     }
   }
@@ -311,7 +521,7 @@ void GUI::chooseMenuNext()
   for (auto& choice : currentMenu) {
     if (choice.selected) {
       choice.selected = false;
-      choice.next->selected = true;
+      currentMenu[choice.next].selected = true;
       return;
     }
   }
