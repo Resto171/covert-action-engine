@@ -4,6 +4,7 @@
 
 void GameState::initMiniGameClasses()
 {
+  mGameElec = std::make_unique<MiniGameElectronics>();
 }
 
 
@@ -127,8 +128,8 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         break;
       case MiniGameType::Elec:
         /// TODO: differentiate between 'trace' and 'phone bug'
-        if (condition == ScreenExitCondition::None)  { /*TODO: back to prev menu? */ }
-        if (condition == ScreenExitCondition::Timeout)  { /*TODO: back to prev menu? */ }
+        if (condition == ScreenExitCondition::None)  { currentScreen = GameScreen::CityMainMenu; }
+        if (condition == ScreenExitCondition::Timeout)  { currentScreen = GameScreen::CityMainMenu; }
         if (condition == ScreenExitCondition::PhoneBugged)  { currentScreen = GameScreen::ElecModalBugged; }
         if (condition == ScreenExitCondition::CarTraced)  { currentScreen = GameScreen::ElecModalTrace; }
         if (condition == ScreenExitCondition::Lose)  { currentScreen = GameScreen::ElecModalAlarm; }
@@ -155,14 +156,12 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         break;
       case GameScreen::SkillPractice:  // TODO
         (this->modalSequence)++;  // TODO: this double-increments currently (FIXME) using ENTER but not ESC
-        std::cout << this->modalSequence << std::endl;
         // TODO: set origScreen to BeginMenu
-        // TODO: how to deal with the transition from not in minigame into the minigame??
         if (this->modalSequence == 3) {
           if (this->selectedChoice == 0)  { currentScreen = GameScreen::MiniGameCombatStart; }
           if (this->selectedChoice == 1)  { currentScreen = GameScreen::MiniGameDrivingStart; }
           if (this->selectedChoice == 2)  { currentScreen = GameScreen::MiniGameCryptoStart; }
-          if (this->selectedChoice == 3)  { currentScreen = GameScreen::MiniGameElecStart; }
+          if (this->selectedChoice == 3)  { enterMiniGame(MiniGameType::Elec); }
         }
         // TODO: default?
         break;
@@ -298,10 +297,13 @@ void GameState::getNextScreen(ScreenExitCondition condition)
       case GameScreen::Building3:
       case GameScreen::Building4:
       case GameScreen::Building5:
-        if (this->selectedChoice == 0)  { currentScreen = GameScreen::CityMainMenu; }
+        // Menu order (see gui.cpp): Place wiretap, Break in, Watch, Check Data, Leave.
+        // Entering the minigame here (rather than from its own screen case) means it
+        // is initialised before the screen is first drawn.
+        if (this->selectedChoice == 0)  { enterMiniGame(MiniGameType::Elec); }
         if (this->selectedChoice == 1)  { currentScreen = GameScreen::MiniGameCombatStart; }
-        if (this->selectedChoice == 2)  { currentScreen = GameScreen::MiniGameElecStart; }
-        // TODO: watch should go back to the correct building
+        if (this->selectedChoice == 2)  { currentScreen = GameScreen::BuildingWatch; }
+        // TODO: "Check Data" has no implemented screen yet; fall back to watching.
         if (this->selectedChoice == 3)  { currentScreen = GameScreen::BuildingWatch; }
         if (this->selectedChoice == 4)  { currentScreen = GameScreen::CityMainMenu; }
         break;
@@ -349,10 +351,16 @@ void GameState::getNextScreen(ScreenExitCondition condition)
       case GameScreen::MiniGameCombatStart:
       case GameScreen::MiniGameDrivingStart:
       case GameScreen::MiniGameCryptoStart:
-      case GameScreen::MiniGameElecStart:
         // TODO: actually run the minigame. For now return to skill practice.
         currentScreen = GameScreen::SkillPractice;
         this->modalSequence = 0;
+        break;
+      case GameScreen::MiniGameElecStart:
+        // Normally the minigame is started by the screen that links here (see the
+        // Building case); this is a fallback for reaching the screen directly.
+        // Starting it sets inMiniGame, so later getNextScreen() calls take the
+        // minigame branch above.
+        enterMiniGame(MiniGameType::Elec);
         break;
       case GameScreen::UNKNOWN:  // TODO
       default:
@@ -384,26 +392,106 @@ GameScreen GameState::goBackFrom(OriginScreen os)
 
 void GameState::enterMiniGame(MiniGameType miniGame)
 {
-  (void)miniGame;
-  /* TODO-debug
-  this->currentMiniGame = miniGame;
-  this->inMiniGame = true;
+  if (!mGameElec)  { initMiniGameClasses(); }
+
   switch (miniGame) {
-    case MiniGameType::Combat:  // TODO: define breakin, breakout, or ambush
-      mGameCombat->start(Difficulty::Level1);  // TODO: determine difficulty within class
+    case MiniGameType::Elec:
+      mGameElec->start(this->gameDifficulty);
+      this->currentMiniGame = miniGame;
+      this->inMiniGame = true;
+      this->currentScreen = GameScreen::MiniGameElecStart;
       break;
-    case MiniGameType::Driving:  // TODO: define chase or evade
-      mGameDriving->start(Difficulty::Level1);
-      break;
+    case MiniGameType::Combat:
+    case MiniGameType::Driving:
     case MiniGameType::Crypto:
-      mGameCrypto->start(Difficulty::Level1);
-      break;
-    case MiniGameType::Elec:  // TODO: define tap or trace
-      mGameElec->start(Difficulty::Level1);
+    case MiniGameType::Inactive:
+    default:
+      // TODO: these minigames are not implemented; leave the caller where it was
+      // rather than dropping into an unplayable state.
       break;
   }
+}
 
-// */
+
+void GameState::miniGameMove(int dx, int dy)
+{
+  if (!inMiniGame || currentMiniGame != MiniGameType::Elec || !mGameElec)  { return; }
+  mGameElec->moveCursor(dx, dy);
+}
+
+
+void GameState::miniGameRotate()
+{
+  if (!inMiniGame || currentMiniGame != MiniGameType::Elec || !mGameElec)  { return; }
+  mGameElec->rotateCursor();
+}
+
+
+void GameState::miniGameCancel()
+{
+  if (!inMiniGame)  { return; }
+  // Ask the FSM for the "no outcome" exit screen first (it reads inMiniGame),
+  // then leave the minigame state. The caller redraws the resulting screen.
+  getNextScreen(ScreenExitCondition::None);
+  inMiniGame = false;
+  currentMiniGame = MiniGameType::Inactive;
+}
+
+
+namespace {
+// One character per junction type, used to draw the board.
+const char* junctionGlyph(Junction j)
+{
+  switch (j) {
+    case STRAIGHT:            return "-";
+    case CROSS:               return "+";
+    case TOP_TO_ALL:          return "T";
+    case BOT_TO_ALL:          return "b";
+    case ALL_TO_TOP:          return "t";
+    case ALL_TO_BOT:          return "B";
+    case STRAIGHT_INV_TOP:    return "=";
+    case STRAIGHT_INV_BOT:    return "_";
+    case STRAIGHT_INV_ALL:    return "|";
+    case CROSS_INV_TOP_LEFT:  return "x";
+    case CROSS_INV_BOT_LEFT:  return "o";
+    case CROSS_INV_ALL:       return "*";
+  }
+  return "?";
+}
+}  // namespace
+
+
+void GameState::drawMiniGame()
+{
+  if (currentMiniGame != MiniGameType::Elec || !mGameElec) {
+    centerText(CAColor::WHITE, "Minigame not implemented", 90);
+    return;
+  }
+
+  // Board layout, in logical (320x200) pixels. Keep in step with the geometry
+  // exposed by MiniGameElectronics (kRows/kCols).
+  const int cellW = 26;
+  const int cellH = 22;
+  const int gridX = 44;
+  const int gridY = 40;
+  const int cx = mGameElec->cursorX();
+  const int cy = mGameElec->cursorY();
+
+  centerText(CAColor::WHITE, "Electronics", 14);
+
+  for (int row = 0; row < MiniGameElectronics::kRows; ++row) {
+    for (int col = 0; col < MiniGameElectronics::kCols; ++col) {
+      const SDL_Rect cell{ gridX + col * cellW, gridY + row * cellH, cellW, cellH };
+      const bool onCursor = (row == cy && col == cx);
+      fillBox(onCursor ? CAColor::YELLOW : CAColor::BLACK, cell);
+      drawBox(CAColor::DKGREY, cell);
+      drawText(onCursor ? CAColor::BLACK : CAColor::GREEN,
+               junctionGlyph(mGameElec->junctionAt(row, col)),
+               SDL_Point{ cell.x + 9, cell.y + 4 });
+    }
+  }
+
+  centerText(CAColor::GREY, "Arrows move  ENTER rotate  ESC leave", 168);
 }
 
 // TODO: make order of functions match the class order in the header

@@ -1,8 +1,9 @@
 #pragma once
 
 /// #include <functional>
-/// #include <memory>
+#include <memory>
 #include "../gui/gui.h"
+#include "../minigame/electronics.h"
 
 class GameState : public GUI {
 public:
@@ -19,6 +20,15 @@ public:
   Difficulty getGameDifficulty();  // TODO
   void setGameDifficulty(Difficulty gameDifficulty);
 
+  // Renders the running minigame (override of the GUI hook).
+  void drawMiniGame() override;
+
+  // Minigame input, driven by the key handler. These only mutate game state;
+  // the caller redraws afterwards.
+  void miniGameMove(int dx, int dy);
+  void miniGameRotate();
+  void miniGameCancel();  // leave the minigame without a specific outcome
+
   MiniGameType currentMiniGame { MiniGameType::Inactive };
   GameScreen currentScreen { GameScreen::Splash1 };
   bool inMiniGame { false };
@@ -27,6 +37,9 @@ public:
   OriginScreen origScreen { OriginScreen::UNKNOWNORIGIN };
   int modalSequence { 0 };
   Difficulty gameDifficulty { Difficulty::Level1 };
+
+private:
+  std::unique_ptr<MiniGameElectronics> mGameElec;
 };
 
 

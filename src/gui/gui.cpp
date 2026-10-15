@@ -19,25 +19,6 @@ std::unique_ptr<GUI> gui;
 // lands 1:1 on screen instead of being blown up (which made it look thick).
 static constexpr int kFontPx = UI_FONT_SIZE * SCREEN_SCALE;
 
-namespace CAColor {
-    const SDL_Color BLACK = { 0x00, 0x00, 0x00, 0xFF };
-    const SDL_Color DKRED = { 0xAA, 0x00, 0x00, 0xFF };
-    const SDL_Color DKGREEN = { 0x00, 0xAA, 0x00, 0xFF };
-    const SDL_Color BROWN = { 0xAA, 0x55, 0x00, 0xFF };
-    const SDL_Color DKBLUE = { 0x00, 0x00, 0xAA, 0xFF };
-    const SDL_Color UNK = { 0x00, 0x00, 0x00, 0xFF };
-    const SDL_Color DKCYAN = { 0x00, 0xAA, 0xAA, 0xFF };
-    const SDL_Color GREY = { 0xAA, 0xAA, 0xAA, 0xFF };
-    const SDL_Color DKGREY = { 0x55, 0x55, 0x55, 0xFF };
-    const SDL_Color RED = { 0xFF, 0x55, 0x55, 0xFF };
-    const SDL_Color GREEN = { 0x55, 0xFF, 0x55, 0xFF };
-    const SDL_Color YELLOW = { 0xFF, 0xFF, 0x55, 0xFF };
-    const SDL_Color BLUE = { 0x55, 0x55, 0xFF, 0xFF };
-    const SDL_Color MAGENTA = { 0xFF, 0x55, 0xFF, 0xFF };
-    const SDL_Color CYAN = { 0x55, 0xFF, 0xFF, 0xFF };
-    const SDL_Color WHITE = { 0xFF, 0xFF, 0xFF, 0xFF };
-}
-
 namespace {
 // Screen names indexed by GameScreen (declaration order in types.h).
 // Used for the console (NO_SDL) output and for placeholder labels.
@@ -218,6 +199,9 @@ bool GUI::guiShouldRefresh()  { return dialogType == DialogType::INFOTIMER && SD
 // else waits for input. (No real clock in the NO_SDL build.)
 bool GUI::guiShouldRefresh()  { return dialogType == DialogType::INFOTIMER; }
 #endif
+
+
+void GUI::drawMiniGame()  {}  // overridden by GameState to draw the active minigame
 
 
 void GUI::createGUI(GameScreen screen)
@@ -477,11 +461,17 @@ void GUI::createGUI(GameScreen screen)
     case GameScreen::MiniGameCombatStart:
     case GameScreen::MiniGameDrivingStart:
     case GameScreen::MiniGameCryptoStart:
-    case GameScreen::MiniGameElecStart:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKRED);
       centerText(CAColor::WHITE, screenName(screen), 40);
       centerText(CAColor::GREY, "Minigames are not implemented yet", 40 + UI_LINE_HEIGHT);
+      break;
+    case GameScreen::MiniGameElecStart:
+      // The electronics minigame is implemented; it draws itself and waits for
+      // the key handler (see DialogType::MINIGAME in covert.cpp).
+      dialogType = DialogType::MINIGAME;
+      setBGColor(CAColor::BLACK);
+      drawMiniGame();
       break;
     case GameScreen::GameExitModal:
       dialogType = DialogType::INFO;

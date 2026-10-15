@@ -78,3 +78,23 @@ Difficulty MiniGameElectronics::getGameDifficulty() {
   return Difficulty::Level1;  // TODO
 ///   return d;
 }
+
+
+void MiniGameElectronics::moveCursor(int dx, int dy) {
+  int nx = (int)sx + dx;
+  int ny = (int)sy + dy;
+  if (nx < 0)  { nx = 0; }
+  if (nx >= kCols)  { nx = kCols - 1; }
+  if (ny < 0)  { ny = 0; }
+  if (ny >= kRows)  { ny = kRows - 1; }
+  sx = (unsigned char)nx;
+  sy = (unsigned char)ny;
+}
+
+
+void MiniGameElectronics::rotateCursor() {
+  Junc& j = junction_matrix[sy][sx];
+  int v = (int)j.junction + 1;
+  if (v > (int)CROSS_INV_ALL)  { v = (int)STRAIGHT; }
+  j.junction = (Junction)v;
+}

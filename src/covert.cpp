@@ -132,6 +132,15 @@ int do_covert()
           advanceScreen();
         }
         break;
+      case DialogType::MINIGAME:
+        if (ch == 'a' || ch == 'A') { gameState->miniGameMove(-1, 0); }
+        else if (ch == 'd' || ch == 'D') { gameState->miniGameMove(1, 0); }
+        else if (ch == 'w' || ch == 'W') { gameState->miniGameMove(0, -1); }
+        else if (ch == 's' || ch == 'S') { gameState->miniGameMove(0, 1); }
+        else if (ch == 'x' || ch == 'X') { gameState->miniGameCancel(); }
+        else { gameState->miniGameRotate(); }
+        gameState->createGUI(gameState->currentScreen);
+        break;
       default:
         advanceScreen();
         break;
@@ -200,6 +209,17 @@ void handler(SDL_Event& e) {
       }  // ...keysym.sym
       break;
     case DialogType::MINIGAME:
+      switch (e.key.keysym.sym) {
+        case mapUP:    gameState->miniGameMove(0, -1); break;
+        case mapDOWN:  gameState->miniGameMove(0, 1); break;
+        case mapLEFT:  gameState->miniGameMove(-1, 0); break;
+        case mapRIGHT: gameState->miniGameMove(1, 0); break;
+        case mapENTER: gameState->miniGameRotate(); break;
+        case mapESC:   gameState->miniGameCancel(); break;
+        default:       return;  // unrecognised key: nothing to redraw
+      }
+      gameState->createGUI(gameState->currentScreen);
+      break;
     default:
       break;
   }  // gameState->guiGetDialogType

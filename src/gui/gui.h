@@ -26,6 +26,27 @@ typedef struct SDL_Point  { int x,y; }  SDL_Point;
 typedef struct SDL_Color  { uint8_t r,g,b,a; }  SDL_Color;
 #endif
 
+// The fixed UI palette. These are the original game's colours; they are exposed
+// here so screens drawn outside gui.cpp (e.g. the minigames) can use them.
+namespace CAColor {
+    inline constexpr SDL_Color BLACK   = { 0x00, 0x00, 0x00, 0xFF };
+    inline constexpr SDL_Color DKRED   = { 0xAA, 0x00, 0x00, 0xFF };
+    inline constexpr SDL_Color DKGREEN = { 0x00, 0xAA, 0x00, 0xFF };
+    inline constexpr SDL_Color BROWN   = { 0xAA, 0x55, 0x00, 0xFF };
+    inline constexpr SDL_Color DKBLUE  = { 0x00, 0x00, 0xAA, 0xFF };
+    inline constexpr SDL_Color UNK     = { 0x00, 0x00, 0x00, 0xFF };
+    inline constexpr SDL_Color DKCYAN  = { 0x00, 0xAA, 0xAA, 0xFF };
+    inline constexpr SDL_Color GREY    = { 0xAA, 0xAA, 0xAA, 0xFF };
+    inline constexpr SDL_Color DKGREY  = { 0x55, 0x55, 0x55, 0xFF };
+    inline constexpr SDL_Color RED     = { 0xFF, 0x55, 0x55, 0xFF };
+    inline constexpr SDL_Color GREEN   = { 0x55, 0xFF, 0x55, 0xFF };
+    inline constexpr SDL_Color YELLOW  = { 0xFF, 0xFF, 0x55, 0xFF };
+    inline constexpr SDL_Color BLUE    = { 0x55, 0x55, 0xFF, 0xFF };
+    inline constexpr SDL_Color MAGENTA = { 0xFF, 0x55, 0xFF, 0xFF };
+    inline constexpr SDL_Color CYAN    = { 0x55, 0xFF, 0xFF, 0xFF };
+    inline constexpr SDL_Color WHITE   = { 0xFF, 0xFF, 0xFF, 0xFF };
+}
+
 /// #include "../disk/loadsave.h"
 #include "../types.h"
 /// #include "point.h"
@@ -55,6 +76,9 @@ public:
     void selectMenuState();
     void selectMenuDefault();
     bool guiShouldRefresh();
+    // Rendered for minigame screens. The base class draws nothing; GameState
+    // overrides it to draw the currently running minigame.
+    virtual void drawMiniGame();
 #ifdef PLACEHOLDERS
     void _imagePlaceholder(const int&, const int&, const int&, const int&);
 #endif

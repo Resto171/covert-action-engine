@@ -189,11 +189,11 @@ UTEST(cae, fsm_new_game_opening_sequence) {
 UTEST(cae, fsm_minigame_start_returns_to_skill_practice) {
     gameState = std::make_unique<GameState>();
 
+    // Combat/Driving/Crypto are still unimplemented and bounce back to practice.
     const GameScreen starts[] = {
         GameScreen::MiniGameCombatStart,
         GameScreen::MiniGameDrivingStart,
         GameScreen::MiniGameCryptoStart,
-        GameScreen::MiniGameElecStart,
     };
     for (GameScreen start : starts) {
         gameState->currentScreen = start;
@@ -202,6 +202,30 @@ UTEST(cae, fsm_minigame_start_returns_to_skill_practice) {
         CAE_EXPECT_SCREEN(GameScreen::SkillPractice);
         EXPECT_EQ(0, gameState->modalSequence);
     }
+}
+
+
+// The electronics minigame is wired up: entering its start screen begins the
+// minigame, and cancelling it returns to the city.
+UTEST(cae, fsm_elec_minigame_enter_and_cancel) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::MiniGameElecStart;
+
+    gameState->getNextScreen();
+    EXPECT_TRUE(gameState->inMiniGame);
+    EXPECT_EQ((int)MiniGameType::Elec, (int)gameState->currentMiniGame);
+    CAE_EXPECT_SCREEN(GameScreen::MiniGameElecStart);
+
+    // Input methods must be safe and only mutate state.
+    gameState->miniGameMove(1, 0);
+    gameState->miniGameMove(0, 1);
+    gameState->miniGameRotate();
+    EXPECT_TRUE(gameState->inMiniGame);
+
+    gameState->miniGameCancel();
+    EXPECT_TRUE(!gameState->inMiniGame);
+    EXPECT_EQ((int)MiniGameType::Inactive, (int)gameState->currentMiniGame);
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
 }
 
 
@@ -221,6 +245,38 @@ UTEST(cae, fsm_minigame_exit_conditions) {
 
     // An inactive minigame must not transition anywhere.
     gameState->currentMiniGame = MiniGameType::Inactive;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+}
+
+
+UTEST(cae, fsm_building_menu_maps_to_correct_screens) {
+    // The building menu is: Place wiretap, Break in, Watch, Check Data, Leave.
+    // "Place wiretap" (0) must start the electronics minigame, and "Watch the
+    // building" (2) must go to the watch screen (this used to be swapped).
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Building1;
+    gameState->selectedChoice = 0;
+    gameState->getNextScreen();
+    EXPECT_TRUE(gameState->inMiniGame);
+    EXPECT_EQ((int)MiniGameType::Elec, (int)gameState->currentMiniGame);
+    CAE_EXPECT_SCREEN(GameScreen::MiniGameElecStart);
+
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Building2;
+    gameState->selectedChoice = 1;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::MiniGameCombatStart);
+
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Building2;
+    gameState->selectedChoice = 2;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::BuildingWatch);
+
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Building2;
+    gameState->selectedChoice = 4;
     gameState->getNextScreen();
     CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
 }
