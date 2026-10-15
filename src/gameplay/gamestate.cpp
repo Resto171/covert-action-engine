@@ -103,6 +103,9 @@ void GameState::getNextScreen(ScreenExitCondition condition)
 
   if (this->inMiniGame) {
     switch (this->currentMiniGame) {
+      case MiniGameType::Inactive:
+        // No minigame running; nothing to transition from.
+        break;
       case MiniGameType::Combat:
         if (condition == ScreenExitCondition::None)  { currentScreen = GameScreen::CityMainMenu; }
         if (condition == ScreenExitCondition::Arrest)  { currentScreen = GameScreen::CombatArrest; }

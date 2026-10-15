@@ -38,13 +38,6 @@ namespace CAColor {
     SDL_Color WHITE = { 0xFF, 0xFF, 0xFF };
 }
 
-static const SDL_Color colors[] = {
-    CAColor::BLACK, CAColor::DKRED, CAColor::DKGREEN, CAColor::BROWN,
-    CAColor::DKBLUE, CAColor::BLACK, CAColor::DKCYAN, CAColor::GREY,
-    CAColor::DKGREY, CAColor::RED, CAColor::GREEN, CAColor::YELLOW,
-    CAColor::BLUE, CAColor::MAGENTA, CAColor::CYAN, CAColor::WHITE
-};
-
 namespace {
 // Screen names indexed by GameScreen (declaration order in types.h).
 // Used for the console (NO_SDL) output and for placeholder labels.
@@ -77,11 +70,17 @@ void GUI::initGUI()
   // Nearest-neighbour scaling keeps the pixel art crisp now that the text is
   // rasterised at its final size instead of being blown up by the renderer.
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
-  SDL_CreateWindowAndRenderer(SCREEN_SCALE * SCREEN_WIDTH, SCREEN_SCALE * SCREEN_HEIGHT,
-                              SDL_WINDOW_RESIZABLE, &window, &renderer);
+  if (SDL_CreateWindowAndRenderer(SCREEN_SCALE * SCREEN_WIDTH, SCREEN_SCALE * SCREEN_HEIGHT,
+                                  SDL_WINDOW_RESIZABLE, &window, &renderer) != 0) {
+    fprintf(stderr, "Could not create window/renderer: %s\n", SDL_GetError());
+    exit(EXIT_FAILURE);
+  }
   SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-  TTF_Init();  // TODO: move to Font class
+  if (TTF_Init() != 0) {  // TODO: move to Font class
+    fprintf(stderr, "Could not initialise SDL_ttf: %s\n", TTF_GetError());
+    exit(EXIT_FAILURE);
+  }
 
   // TODO: bundle a font with the game instead of relying on the system.
   const char* windir = std::getenv("WINDIR");
@@ -111,9 +110,27 @@ void GUI::initGUI()
     }
     exit(EXIT_FAILURE);
   }
+#endif
+}
 
-  SDL_Palette* palette16 = SDL_AllocPalette(16);
-  SDL_SetPaletteColors(palette16, colors, 0, 16);  // TODO: figure this out
+
+GUI::~GUI()
+{
+#ifndef NO_SDL
+  if (ttf != nullptr) {
+    TTF_CloseFont(ttf);
+    ttf = nullptr;
+  }
+  TTF_Quit();
+
+  if (renderer != nullptr) {
+    SDL_DestroyRenderer(renderer);
+    renderer = nullptr;
+  }
+  if (window != nullptr) {
+    SDL_DestroyWindow(window);
+    window = nullptr;
+  }
 #endif
 }
 
@@ -196,7 +213,8 @@ bool GUI::guiShouldRefresh()  { return dialogType == DialogType::INFOTIMER; }
 void GUI::createGUI(GameScreen screen)
 {
   // Entering a different screen invalidates any menu state built for the previous one.
-  if (screen != this->currentMenuScreen) {
+  const bool screen_changed = (screen != this->currentMenuScreen);
+  if (screen_changed) {
     this->currentMenu.clear();
     this->currentMenuScreen = screen;
   }
@@ -205,9 +223,16 @@ void GUI::createGUI(GameScreen screen)
   fprintf(stdout, " [ %s ]\n", screenName(screen));
 #endif
 
-  // Default timer delay for INFOTIMER screens. Screens that want a different
-  // delay overwrite next_screen_tick below.
-  next_screen_tick = 200 + SDL_GetTicks64();
+  // Arm the auto-advance timer for INFOTIMER screens. This must not restart a
+  // pending timer when we are only repainting the current screen (e.g. after a
+  // window resize/expose), otherwise a splash would linger indefinitely. It is
+  // re-armed once the timer has already fired so a self-transitioning timer
+  // screen cannot spin the main loop. Screens wanting a different delay
+  // overwrite next_screen_tick below.
+  const uint64_t now = SDL_GetTicks64();
+  if (screen_changed || next_screen_tick <= now) {
+    next_screen_tick = 200 + now;
+  }
 
   switch (screen) {
     case GameScreen::Splash1:

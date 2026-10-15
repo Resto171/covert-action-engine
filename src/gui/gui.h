@@ -37,7 +37,7 @@ typedef struct SDL_Color  { uint8_t r,g,b,a; }  SDL_Color;
 class GUI {
 public:
     GUI() = default;
-    ~GUI() = default;
+    ~GUI();
     GUI(const GUI&) = delete;
     GUI& operator=(const GUI&) = delete;
     void initGUI();
@@ -54,7 +54,6 @@ public:
     void chooseMenuNext();
     void selectMenuState();
     void selectMenuDefault();
-    void displayFrame();
     bool guiShouldRefresh();
 #ifdef PLACEHOLDERS
     void _imagePlaceholder(const int&, const int&, const int&, const int&);
@@ -62,9 +61,9 @@ public:
 ///   void /*TODO*/choiceS  electionCallback()  { NULL; }
 /// protected:
 #ifndef NO_SDL
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    TTF_Font* ttf;
+    SDL_Window* window { nullptr };
+    SDL_Renderer* renderer { nullptr };
+    TTF_Font* ttf { nullptr };
     Uint64 next_screen_tick { 0 };
 #else
 	uint64_t next_screen_tick { 0 };  // TODO

@@ -11,11 +11,6 @@ MiniGameElectronics::MiniGameElectronics() {
 
 
 int MiniGameElectronics::start(Difficulty level) {
-  int num_locked;
-  int num_hidden;
-  int num_alarms;
-  int num_jumps;
-  int num_swaps;
   int highest_random = 4 + 2 * (int)level;
   std::random_device seeder;
   std::mt19937 rng(seeder());

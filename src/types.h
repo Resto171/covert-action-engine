@@ -29,11 +29,11 @@ enum class Difficulty : int {
 };
 
 enum class MiniGameType : int {
+  Inactive = 0,  // no minigame in progress
   Combat,
   Driving,
   Crypto,
   Elec,
-  Inactive = 0,
 };
 
 enum class GameScreen : int {
