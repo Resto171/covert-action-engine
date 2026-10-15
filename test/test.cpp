@@ -78,3 +78,170 @@ UTEST(cae, basegenerator_stringify) {
     }
     EXPECT_TRUE(threw);
 }
+
+
+// ---------------------------------------------------------------------------
+// Finite state machine
+//
+// These drive GameState::getNextScreen() directly (no SDL, no stdin) and assert
+// the resulting screen. This is the automated equivalent of walking the menus
+// by hand, and it pins down the transition table so it cannot silently regress.
+// ---------------------------------------------------------------------------
+
+#define CAE_EXPECT_SCREEN(expected) \
+    EXPECT_EQ((int)(expected), (int)gameState->currentScreen)
+
+
+UTEST(cae, fsm_splash_sequence) {
+    gameState = std::make_unique<GameState>();
+
+    CAE_EXPECT_SCREEN(GameScreen::Splash1);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Splash2);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::BeginMenu);
+}
+
+
+UTEST(cae, fsm_begin_menu_routes) {
+    gameState = std::make_unique<GameState>();
+
+    const struct { int choice; GameScreen expected; } routes[] = {
+        {0, GameScreen::NewCharacter},
+        {1, GameScreen::Load},
+        {2, GameScreen::SkillPractice},
+        {3, GameScreen::HallOfFame},
+    };
+    for (const auto& route : routes) {
+        gameState->currentScreen = GameScreen::BeginMenu;
+        gameState->selectedChoice = route.choice;
+        gameState->getNextScreen();
+        CAE_EXPECT_SCREEN(route.expected);
+    }
+}
+
+
+UTEST(cae, fsm_load_and_hall_of_fame_return_to_menu) {
+    gameState = std::make_unique<GameState>();
+
+    gameState->currentScreen = GameScreen::Load;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::BeginMenu);
+
+    gameState->currentScreen = GameScreen::HallOfFame;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::BeginMenu);
+}
+
+
+// The full "new game" opening, from the splashes through to quitting from the
+// city menu. This mirrors the exact sequence observed when walking the console
+// build by hand.
+UTEST(cae, fsm_new_game_opening_sequence) {
+    gameState = std::make_unique<GameState>();
+
+    gameState->getNextScreen();  // Splash2
+    gameState->getNextScreen();  // BeginMenu
+    gameState->selectedChoice = 0;
+    gameState->getNextScreen();  // NewCharacter
+    CAE_EXPECT_SCREEN(GameScreen::NewCharacter);
+
+    // Name entry takes four modal steps, then moves to the skill upgrade screen.
+    gameState->getNextScreen();
+    gameState->getNextScreen();
+    gameState->getNextScreen();
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::SkillUpgrade);
+
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Chief);
+
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::MastermindLineup);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Chief);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::ShowNewClues);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Chief);
+
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CIAContact);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CIASam);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CIAMainMenu);
+
+    gameState->selectedChoice = 0;  // "Leave (return to city)"
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+
+    gameState->selectedChoice = 4;  // "Quit"
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::GameExitModal);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::GameExit);
+    gameState->getNextScreen();
+    EXPECT_TRUE(gameState->shouldQuit);
+}
+
+
+UTEST(cae, fsm_minigame_start_returns_to_skill_practice) {
+    gameState = std::make_unique<GameState>();
+
+    const GameScreen starts[] = {
+        GameScreen::MiniGameCombatStart,
+        GameScreen::MiniGameDrivingStart,
+        GameScreen::MiniGameCryptoStart,
+        GameScreen::MiniGameElecStart,
+    };
+    for (GameScreen start : starts) {
+        gameState->currentScreen = start;
+        gameState->modalSequence = 2;
+        gameState->getNextScreen();
+        CAE_EXPECT_SCREEN(GameScreen::SkillPractice);
+        EXPECT_EQ(0, gameState->modalSequence);
+    }
+}
+
+
+UTEST(cae, fsm_minigame_exit_conditions) {
+    gameState = std::make_unique<GameState>();
+    gameState->inMiniGame = true;
+    gameState->currentMiniGame = MiniGameType::Combat;
+
+    gameState->getNextScreen(ScreenExitCondition::Arrest);
+    CAE_EXPECT_SCREEN(GameScreen::CombatArrest);
+    gameState->getNextScreen(ScreenExitCondition::Shot);
+    CAE_EXPECT_SCREEN(GameScreen::CombatRecover);
+    gameState->getNextScreen(ScreenExitCondition::Lose);
+    CAE_EXPECT_SCREEN(GameScreen::CombatCaptive);
+    gameState->getNextScreen(ScreenExitCondition::None);
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+
+    // An inactive minigame must not transition anywhere.
+    gameState->currentMiniGame = MiniGameType::Inactive;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+}
+
+
+UTEST(cae, fsm_unknown_screen_exits) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::UNKNOWN;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::GameExit);
+}
+
+
+UTEST(cae, fsm_go_back_from) {
+    gameState = std::make_unique<GameState>();
+
+    EXPECT_EQ((int)GameScreen::Chief, (int)gameState->goBackFrom(OriginScreen::ChiefCaseIntro));
+    EXPECT_EQ((int)GameScreen::Chief, (int)gameState->goBackFrom(OriginScreen::ChiefInfoHandout));
+    EXPECT_EQ((int)GameScreen::Chief, (int)gameState->goBackFrom(OriginScreen::ChiefKickMaxOut));
+    EXPECT_EQ((int)GameScreen::CIAMainMenu, (int)gameState->goBackFrom(OriginScreen::CIA));
+    EXPECT_EQ((int)GameScreen::CityMainMenu, (int)gameState->goBackFrom(OriginScreen::CityMenu));
+    EXPECT_EQ((int)GameScreen::CityMainMenu, (int)gameState->goBackFrom(OriginScreen::UNKNOWNORIGIN));
+}
+
