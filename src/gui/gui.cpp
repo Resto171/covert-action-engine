@@ -20,22 +20,22 @@ std::unique_ptr<GUI> gui;
 static constexpr int kFontPx = UI_FONT_SIZE * SCREEN_SCALE;
 
 namespace CAColor {
-    SDL_Color BLACK = { 0x00, 0x00, 0x00 };
-    SDL_Color DKRED = { 0xAA, 0x00, 0x00 };
-    SDL_Color DKGREEN = { 0x00, 0xAA, 0x00 };
-    SDL_Color BROWN = { 0xAA, 0x55, 0x00 };
-    SDL_Color DKBLUE = { 0x00, 0x00, 0xAA };
-    SDL_Color UNK = { 0x00, 0x00, 0x00 };
-    SDL_Color DKCYAN = { 0x00, 0xAA, 0xAA };
-    SDL_Color GREY = { 0xAA, 0xAA, 0xAA };
-    SDL_Color DKGREY = { 0x55, 0x55, 0x55 };
-    SDL_Color RED = { 0xFF, 0x55, 0x55 };
-    SDL_Color GREEN = { 0x55, 0xFF, 0x55 };
-    SDL_Color YELLOW = { 0xFF, 0xFF, 0x55 };
-    SDL_Color BLUE = { 0x55, 0x55, 0xFF };
-    SDL_Color MAGENTA = { 0xFF, 0x55, 0xFF };
-    SDL_Color CYAN = { 0x55, 0xFF, 0xFF };
-    SDL_Color WHITE = { 0xFF, 0xFF, 0xFF };
+    const SDL_Color BLACK = { 0x00, 0x00, 0x00, 0xFF };
+    const SDL_Color DKRED = { 0xAA, 0x00, 0x00, 0xFF };
+    const SDL_Color DKGREEN = { 0x00, 0xAA, 0x00, 0xFF };
+    const SDL_Color BROWN = { 0xAA, 0x55, 0x00, 0xFF };
+    const SDL_Color DKBLUE = { 0x00, 0x00, 0xAA, 0xFF };
+    const SDL_Color UNK = { 0x00, 0x00, 0x00, 0xFF };
+    const SDL_Color DKCYAN = { 0x00, 0xAA, 0xAA, 0xFF };
+    const SDL_Color GREY = { 0xAA, 0xAA, 0xAA, 0xFF };
+    const SDL_Color DKGREY = { 0x55, 0x55, 0x55, 0xFF };
+    const SDL_Color RED = { 0xFF, 0x55, 0x55, 0xFF };
+    const SDL_Color GREEN = { 0x55, 0xFF, 0x55, 0xFF };
+    const SDL_Color YELLOW = { 0xFF, 0xFF, 0x55, 0xFF };
+    const SDL_Color BLUE = { 0x55, 0x55, 0xFF, 0xFF };
+    const SDL_Color MAGENTA = { 0xFF, 0x55, 0xFF, 0xFF };
+    const SDL_Color CYAN = { 0x55, 0xFF, 0xFF, 0xFF };
+    const SDL_Color WHITE = { 0xFF, 0xFF, 0xFF, 0xFF };
 }
 
 namespace {
@@ -140,6 +140,8 @@ void GUI::setBGColor(const SDL_Color c)
 #ifndef NO_SDL
   SDL_SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a);  // TODO: use a colorlist element
   SDL_RenderClear(renderer);
+#else
+  (void)c;
 #endif
 }
 
@@ -149,6 +151,9 @@ void GUI::fillBox(const SDL_Color c, const SDL_Rect r)
 #ifndef NO_SDL
   SDL_SetRenderDrawColor(renderer, c.r, c.g, c.b, SDL_ALPHA_OPAQUE);
   SDL_RenderFillRect(renderer, &r);
+#else
+  (void)c;
+  (void)r;
 #endif
 }
 
@@ -158,6 +163,9 @@ void GUI::drawBox(const SDL_Color c, const SDL_Rect r)
 #ifndef NO_SDL
   SDL_SetRenderDrawColor(renderer, c.r, c.g, c.b, SDL_ALPHA_OPAQUE);
   SDL_RenderDrawRect(renderer, &r);
+#else
+  (void)c;
+  (void)r;
 #endif
 }
 
@@ -184,6 +192,8 @@ void GUI::drawText(const SDL_Color c, const char* txt, const SDL_Point pt)
     SDL_DestroyTexture(textTexture);
   }
 #else
+  (void)c;
+  (void)pt;
   fprintf(stdout, "%s\n", txt);
 #endif
 }
@@ -617,6 +627,10 @@ void GUI::_imagePlaceholder(const int& x, const int& y, const int& w, const int&
   SDL_RenderCopy(renderer, pxTex, nullptr, &pxRect);
   SDL_DestroyTexture(pxTex);
 #else
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
   fprintf(stdout, "<img subst>\n");
 #endif  // !NO_SDL
 }

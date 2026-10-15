@@ -13,6 +13,7 @@ MiniGameCombat::MiniGameCombat() {
 
 #include <iostream>  // TODO-debug
 int MiniGameCombat::start(Difficulty level) {
+  (void)level;  // TODO: use the difficulty
   inv.uzi = false;
   inv.gas_mask = false;
   inv.motion_detector = false;

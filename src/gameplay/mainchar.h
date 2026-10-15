@@ -1,5 +1,10 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+
+
 class MainChar {
 public:
     MainChar() = default;
@@ -39,3 +44,7 @@ public:
     Aptitude apt_crypto {Aptitude::Average};
     Aptitude apt_elec {Aptitude::Average};
 };
+
+
+// The player character for the running session (created in do_covert()).
+extern std::unique_ptr<MainChar> mainChar;

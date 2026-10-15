@@ -14,6 +14,8 @@ endif()
 option(PLACEHOLDERS "Use generated placeholder graphics instead of real assets" ON)
 # Build without SDL: console-only, no window/no rendering.
 option(NO_SDL "Disable SDL entirely (console-only build)" OFF)
+# Treat compiler warnings as errors.
+option(WERROR "Fail the build on warnings" OFF)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_ttf CONFIG REQUIRED)
@@ -21,8 +23,9 @@ find_package(SDL2_mixer CONFIG REQUIRED)
 find_package(SDL2_image CONFIG REQUIRED)
 find_package(PNG REQUIRED)
 
-set(CAE_SOURCES
-        src/main.cpp
+# Engine sources, shared by the game executable and the unit tests. main.cpp is
+# intentionally absent: each binary provides its own entry point.
+set(CAE_CORE_SOURCES
         src/covert.cpp
         src/gameplay/casegenerator.cpp
         src/gameplay/agentgenerator.cpp
@@ -38,34 +41,51 @@ set(CAE_SOURCES
         src/gui/point.cpp
 )
 
-add_executable(${PROJECT_NAME} ${CAE_SOURCES})
+if(MSVC)
+    set(CAE_WARNINGS /W4)
+    if(WERROR)
+        list(APPEND CAE_WARNINGS /WX)
+    endif()
+else()
+    set(CAE_WARNINGS -Wall -Wextra)
+    if(WERROR)
+        list(APPEND CAE_WARNINGS -Werror)
+    endif()
+endif()
 
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+add_library(cae_core STATIC ${CAE_CORE_SOURCES})
 
-# SDL_MAIN_HANDLED keeps the standard main() entry point (no SDL2main / WinMain redirect).
-target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+target_include_directories(cae_core PUBLIC src)
+
+# SDL_MAIN_HANDLED keeps the standard main() entry point (no SDL2main / WinMain
+# redirect). It is PUBLIC so the executable and test binaries inherit it.
+target_compile_definitions(cae_core PUBLIC SDL_MAIN_HANDLED)
 
 if(PLACEHOLDERS)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE PLACEHOLDERS)
+    target_compile_definitions(cae_core PUBLIC PLACEHOLDERS)
 endif()
 
 if(NO_SDL)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE NO_SDL)
+    target_compile_definitions(cae_core PUBLIC NO_SDL)
 endif()
 
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
-else()
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall)
-endif()
+target_compile_options(cae_core PRIVATE ${CAE_WARNINGS})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
+target_link_libraries(cae_core PUBLIC
         SDL2::SDL2
         SDL2_ttf::SDL2_ttf
         SDL2_mixer::SDL2_mixer
         SDL2_image::SDL2_image
         PNG::PNG
 )
+
+add_executable(${PROJECT_NAME} src/main.cpp)
+target_compile_options(${PROJECT_NAME} PRIVATE ${CAE_WARNINGS})
+target_link_libraries(${PROJECT_NAME} PRIVATE cae_core)
+
+# Unit tests.
+enable_testing()
+add_subdirectory(test)
 
 # Copy runtime resources (currently just the placeholder sound) next to the binary.
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

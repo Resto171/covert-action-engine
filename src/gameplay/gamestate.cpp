@@ -384,6 +384,7 @@ GameScreen GameState::goBackFrom(OriginScreen os)
 
 void GameState::enterMiniGame(MiniGameType miniGame)
 {
+  (void)miniGame;
   /* TODO-debug
   this->currentMiniGame = miniGame;
   this->inMiniGame = true;

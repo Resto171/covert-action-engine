@@ -1,40 +1,11 @@
-cmake_minimum_required(VERSION 3.9)
-project(test-covert-action-engine VERSION 0.0.0)
+# Unit tests (sheredom/utest.h). Reuses the engine sources via the `cae_core`
+# library and registers the binary with CTest.
 
-set(CMAKE_CXX_STANDARD 20)
+add_executable(cae_tests test.cpp)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Modules)
+# Some engine code prints extra diagnostics when TEST_ACTIVE is defined.
+target_compile_definitions(cae_tests PRIVATE TEST_ACTIVE)
 
-add_compile_definitions(TEST_ACTIVE)
+target_link_libraries(cae_tests PRIVATE cae_core)
 
-add_executable(
-        ${PROJECT_NAME}
-        ../src/covert.cpp
-        ../src/disk/loadsave.cpp
-        ../src/gameplay/agentgenerator.cpp
-        ../src/gameplay/case.cpp
-        ../src/gameplay/casegenerator.cpp
-        ../src/gameplay/gamestate.cpp
-        ../src/gfx/picloader.cpp
-        ../src/gui/font.cpp
-        ../src/gui/gui.cpp
-        ../src/gui/menu.cpp
-        ../src/gui/point.cpp
-        ../src/minigame/combat.cpp
-        ../src/minigame/driving.cpp
-        ../src/minigame/cryptography.cpp
-        ../src/minigame/electronics.cpp
-        ../src/sound/fx.cpp
-        ../src/sound/music.cpp
-        test.cpp
-)
-
-find_package(PNG REQUIRED)
-
-find_package(SDL2 REQUIRED)
-find_package(SDL2_image REQUIRED)
-find_package(SDL2_mixer REQUIRED)
-find_package(SDL2_ttf REQUIRED)
-
-include_directories(${SDL2_INCLUDE_DIR} ${SDL2_IMAGE_INCLUDE_DIR} ${SDL2_MIXER_INCLUDE_DIR} ${SDL2_TTF_INCLUDE_DIR})
-target_link_libraries(${PROJECT_NAME} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} ${SDL2_MIXER_LIBRARIES} ${SDL2_TTF_LIBRARIES})
+add_test(NAME cae_tests COMMAND cae_tests)

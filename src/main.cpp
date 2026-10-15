@@ -4,7 +4,7 @@
 #include <iostream>
 #endif
 
-int main( int argc, char* argv[] ) {
+int main() {
 #ifdef PLACEHOLDERS
 #pragma message "DEBUG: use image placeholders"
   std::cout << "Image placeholders are enabled.\n";

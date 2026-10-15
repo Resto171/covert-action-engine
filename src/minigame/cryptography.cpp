@@ -11,6 +11,7 @@ MiniGameCryptography::MiniGameCryptography() {
 }
 
 int MiniGameCryptography::start(Difficulty level) {
+  (void)level;  // TODO: use the difficulty
   std::random_device seeder;
   std::mt19937 rng(seeder());
 
@@ -49,6 +50,7 @@ int MiniGameCryptography::start(Difficulty level) {
 
 
 void MiniGameCryptography::test_convert_message(const auto& key) {
+  (void)key;  // TODO
 // TODO
 /*
   int l = 0;

@@ -75,3 +75,7 @@ public:
     int selectedChoice { 0 };
     DialogType dialogType { DialogType::INFOTIMER };
 };
+
+
+// The GUI for the running session (created in do_covert()).
+extern std::unique_ptr<GUI> gui;

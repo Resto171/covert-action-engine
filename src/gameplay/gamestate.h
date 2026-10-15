@@ -28,3 +28,7 @@ public:
   int modalSequence { 0 };
   Difficulty gameDifficulty { Difficulty::Level1 };
 };
+
+
+// The game state for the running session (created in do_covert()).
+extern std::unique_ptr<GameState> gameState;

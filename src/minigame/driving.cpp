@@ -12,7 +12,7 @@ MiniGameDriving::MiniGameDriving() {
 
 
 int MiniGameDriving::start(Difficulty level) {
-  // TODO
+  (void)level;  // TODO: use the difficulty
   return 0;
 }
 
