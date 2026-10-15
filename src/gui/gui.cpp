@@ -13,6 +13,10 @@ uint64_t SDL_GetTicks64()  { return 0; }
 
 std::unique_ptr<GUI> gui;
 
+// Text point size. The original value (8) rendered strokes that looked too
+// thick once the 320x200 logical surface is scaled up; halved to thin them.
+static constexpr int kFontSize = 4;
+
 namespace CAColor {
     SDL_Color BLACK = { 0x00, 0x00, 0x00 };
     SDL_Color DKRED = { 0xAA, 0x00, 0x00 };
@@ -88,7 +92,7 @@ void GUI::initGUI()
 
   ttf = nullptr;
   for (const std::string& fname : candidates) {
-    ttf = TTF_OpenFont(fname.c_str(), 8);
+    ttf = TTF_OpenFont(fname.c_str(), kFontSize);
     if (ttf != nullptr) {
       fprintf(stdout, "Loaded font: %s\n", fname.c_str());
       break;
