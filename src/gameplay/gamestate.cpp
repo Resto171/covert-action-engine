@@ -1,5 +1,7 @@
 #include "gamestate.h"
 
+#include <cstdio>
+
 
 
 void GameState::initMiniGameClasses()
@@ -424,17 +426,31 @@ void GameState::miniGameRotate()
 {
   if (!inMiniGame || currentMiniGame != MiniGameType::Elec || !mGameElec)  { return; }
   mGameElec->rotateCursor();
+
+  // Rotating can finish the puzzle (all targets linked) or exhaust the turn
+  // budget (the trace completes). Anything else keeps the board open.
+  switch (mGameElec->outcome()) {
+    case ElecOutcome::Success:  finishMiniGame(ScreenExitCondition::PhoneBugged);  break;
+    case ElecOutcome::Alarm:    finishMiniGame(ScreenExitCondition::Lose);         break;
+    case ElecOutcome::InProgress:  break;
+  }
+}
+
+
+void GameState::finishMiniGame(ScreenExitCondition condition)
+{
+  if (!inMiniGame)  { return; }
+  // Ask the FSM for the exit screen first (it reads inMiniGame), then leave the
+  // minigame state. The caller redraws the resulting screen.
+  getNextScreen(condition);
+  inMiniGame = false;
+  currentMiniGame = MiniGameType::Inactive;
 }
 
 
 void GameState::miniGameCancel()
 {
-  if (!inMiniGame)  { return; }
-  // Ask the FSM for the "no outcome" exit screen first (it reads inMiniGame),
-  // then leave the minigame state. The caller redraws the resulting screen.
-  getNextScreen(ScreenExitCondition::None);
-  inMiniGame = false;
-  currentMiniGame = MiniGameType::Inactive;
+  finishMiniGame(ScreenExitCondition::None);
 }
 
 
@@ -477,21 +493,38 @@ void GameState::drawMiniGame()
   const int cx = mGameElec->cursorX();
   const int cy = mGameElec->cursorY();
 
-  centerText(CAColor::WHITE, "Electronics", 14);
+  centerText(CAColor::WHITE, "Electronics - place the wiretap", 4);
 
   for (int row = 0; row < MiniGameElectronics::kRows; ++row) {
     for (int col = 0; col < MiniGameElectronics::kCols; ++col) {
       const SDL_Rect cell{ gridX + col * cellW, gridY + row * cellH, cellW, cellH };
       const bool onCursor = (row == cy && col == cx);
+      const bool powered = mGameElec->isPowered(row, col);
+      const bool hiddenUnknown = mGameElec->isHidden(row, col) && !powered;
+
       fillBox(onCursor ? CAColor::YELLOW : CAColor::BLACK, cell);
-      drawBox(CAColor::DKGREY, cell);
-      drawText(onCursor ? CAColor::BLACK : CAColor::GREEN,
-               junctionGlyph(mGameElec->junctionAt(row, col)),
-               SDL_Point{ cell.x + 9, cell.y + 4 });
+
+      // Frame: source is cyan, targets are red until linked, then green.
+      SDL_Color frame = CAColor::DKGREY;
+      if (mGameElec->isSource(row, col))  { frame = CAColor::CYAN; }
+      else if (mGameElec->isTarget(row, col))  { frame = powered ? CAColor::GREEN : CAColor::RED; }
+      drawBox(frame, cell);
+
+      const char* glyph = hiddenUnknown ? "?" : junctionGlyph(mGameElec->junctionAt(row, col));
+      SDL_Color ink = powered ? CAColor::GREEN : CAColor::DKGREY;
+      if (onCursor)  { ink = CAColor::BLACK; }
+      if (hiddenUnknown && !onCursor)  { ink = CAColor::DKGREY; }
+      drawText(ink, glyph, SDL_Point{ cell.x + 9, cell.y + 4 });
     }
   }
 
-  centerText(CAColor::GREY, "Arrows move  ENTER rotate  ESC leave", 168);
+  // Status line: progress and remaining turns.
+  char status[64];
+  std::snprintf(status, sizeof(status), "Linked %d/%d    Turns left %d",
+                mGameElec->connectedTargets(), MiniGameElectronics::targetCount(),
+                mGameElec->rotationsLeft());
+  centerText(CAColor::GREY, status, 156);
+  centerText(CAColor::GREY, "Arrows move  ENTER rotate  ESC leave", 172);
 }
 
 // TODO: make order of functions match the class order in the header

@@ -216,6 +216,16 @@ UTEST(cae, fsm_elec_minigame_enter_and_cancel) {
     EXPECT_EQ((int)MiniGameType::Elec, (int)gameState->currentMiniGame);
     CAE_EXPECT_SCREEN(GameScreen::MiniGameElecStart);
 
+    // Force a deterministic, unsolvable board so the input below cannot end the
+    // minigame by accident (a random board can rarely start already linked).
+    MiniGameElectronics* mg = gameState->electronics();
+    ASSERT_TRUE(mg != nullptr);
+    for (int r = 0; r < MiniGameElectronics::kRows; ++r) {
+        for (int c = 0; c < MiniGameElectronics::kCols; ++c) {
+            mg->setJunction(r, c, STRAIGHT);
+        }
+    }
+
     // Input methods must be safe and only mutate state.
     gameState->miniGameMove(1, 0);
     gameState->miniGameMove(0, 1);
@@ -299,5 +309,136 @@ UTEST(cae, fsm_go_back_from) {
     EXPECT_EQ((int)GameScreen::CIAMainMenu, (int)gameState->goBackFrom(OriginScreen::CIA));
     EXPECT_EQ((int)GameScreen::CityMainMenu, (int)gameState->goBackFrom(OriginScreen::CityMenu));
     EXPECT_EQ((int)GameScreen::CityMainMenu, (int)gameState->goBackFrom(OriginScreen::UNKNOWNORIGIN));
+}
+
+
+// ---------------------------------------------------------------------------
+// Electronics minigame
+//
+// The board is a grid of junctions; a signal floods from the source across
+// matching sides. The player rotates junctions until every right-column target
+// is linked (success) or the turn budget runs out (alarm).
+// ---------------------------------------------------------------------------
+
+#include "../src/minigame/electronics.h"
+
+namespace {
+void fillElec(MiniGameElectronics& g, Junction j) {
+    for (int r = 0; r < MiniGameElectronics::kRows; ++r) {
+        for (int c = 0; c < MiniGameElectronics::kCols; ++c) {
+            g.setJunction(r, c, j);
+            g.setLocked(r, c, false);
+        }
+    }
+}
+}  // namespace
+
+
+UTEST(cae, elec_board_geometry_and_cursor_bounds) {
+    MiniGameElectronics g;
+    g.start(Difficulty::Level1);
+
+    EXPECT_EQ(5, MiniGameElectronics::kRows);
+    EXPECT_EQ(7, MiniGameElectronics::kCols);
+    EXPECT_TRUE(g.connectedTargets() >= 0);
+    EXPECT_TRUE(g.connectedTargets() <= MiniGameElectronics::targetCount());
+
+    // The cursor is clamped to the board.
+    g.moveCursor(-100, -100);
+    EXPECT_EQ(0, (int)g.cursorX());
+    EXPECT_EQ(0, (int)g.cursorY());
+    g.moveCursor(100, 100);
+    EXPECT_EQ(MiniGameElectronics::kCols - 1, (int)g.cursorX());
+    EXPECT_EQ(MiniGameElectronics::kRows - 1, (int)g.cursorY());
+}
+
+
+UTEST(cae, elec_cross_board_solves) {
+    MiniGameElectronics g;
+    g.start(Difficulty::Level1);
+    fillElec(g, CROSS);
+
+    EXPECT_EQ(MiniGameElectronics::targetCount(), g.connectedTargets());
+    EXPECT_TRUE(g.isSolved());
+    EXPECT_EQ((int)ElecOutcome::Success, (int)g.outcome());
+}
+
+
+UTEST(cae, elec_straight_board_is_under_connected) {
+    MiniGameElectronics g;
+    g.start(Difficulty::Level1);
+    fillElec(g, STRAIGHT);
+
+    // Only the source's own row reaches a target; the others are isolated.
+    EXPECT_EQ(1, g.connectedTargets());
+    EXPECT_TRUE(!g.isSolved());
+    EXPECT_EQ((int)ElecOutcome::InProgress, (int)g.outcome());
+}
+
+
+UTEST(cae, elec_locked_junction_cannot_be_rotated) {
+    MiniGameElectronics g;
+    g.start(Difficulty::Level1);
+    fillElec(g, STRAIGHT);
+
+    g.setJunction(0, 0, STRAIGHT);
+    g.setLocked(0, 0, true);
+    const int before = g.rotationsLeft();
+    g.rotateCursor();  // cursor starts at (0,0)
+    EXPECT_EQ((int)STRAIGHT, (int)g.junctionAt(0, 0));
+    EXPECT_EQ(before, g.rotationsLeft());  // a no-op must not consume a turn
+
+    g.setLocked(0, 0, false);
+    g.rotateCursor();
+    EXPECT_EQ((int)CROSS, (int)g.junctionAt(0, 0));
+    EXPECT_EQ(before - 1, g.rotationsLeft());
+}
+
+
+UTEST(cae, elec_out_of_turns_is_alarm) {
+    MiniGameElectronics g;
+    g.start(Difficulty::Level1);
+    fillElec(g, STRAIGHT);
+
+    // Rotating an isolated cell can never solve the board, so the budget will
+    // run out and the outcome becomes Alarm.
+    int guard = 0;
+    while (g.outcome() == ElecOutcome::InProgress && guard++ < 10000) {
+        g.rotateCursor();
+    }
+    EXPECT_EQ((int)ElecOutcome::Alarm, (int)g.outcome());
+}
+
+
+UTEST(cae, elec_solving_finishes_with_phone_bugged) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::MiniGameElecStart;
+    gameState->getNextScreen();  // enter the minigame
+    EXPECT_TRUE(gameState->inMiniGame);
+
+    MiniGameElectronics* mg = gameState->electronics();
+    ASSERT_TRUE(mg != nullptr);
+    fillElec(*mg, CROSS);
+    mg->setLocked(0, 0, true);  // rotate becomes a no-op; the board stays solved
+
+    gameState->miniGameRotate();
+    EXPECT_TRUE(!gameState->inMiniGame);
+    EXPECT_EQ((int)GameScreen::ElecModalBugged, (int)gameState->currentScreen);
+}
+
+
+UTEST(cae, elec_running_out_of_turns_finishes_with_alarm) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::MiniGameElecStart;
+    gameState->getNextScreen();
+    ASSERT_TRUE(gameState->electronics() != nullptr);
+    fillElec(*gameState->electronics(), STRAIGHT);
+
+    int guard = 0;
+    while (gameState->electronics()->outcome() == ElecOutcome::InProgress && guard++ < 10000) {
+        gameState->miniGameRotate();
+    }
+    EXPECT_TRUE(!gameState->inMiniGame);
+    EXPECT_EQ((int)GameScreen::ElecModalAlarm, (int)gameState->currentScreen);
 }
 

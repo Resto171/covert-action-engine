@@ -23,11 +23,19 @@ public:
   // Renders the running minigame (override of the GUI hook).
   void drawMiniGame() override;
 
+  // The electronics minigame instance (null until initMiniGameClasses runs).
+  // Exposed for the renderer and tests.
+  MiniGameElectronics* electronics() { return mGameElec.get(); }
+
   // Minigame input, driven by the key handler. These only mutate game state;
   // the caller redraws afterwards.
   void miniGameMove(int dx, int dy);
   void miniGameRotate();
   void miniGameCancel();  // leave the minigame without a specific outcome
+
+  // Resolve the running minigame: hand the outcome to the FSM, then clear the
+  // minigame state. The caller redraws the resulting screen.
+  void finishMiniGame(ScreenExitCondition condition);
 
   MiniGameType currentMiniGame { MiniGameType::Inactive };
   GameScreen currentScreen { GameScreen::Splash1 };

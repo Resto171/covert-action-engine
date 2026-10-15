@@ -1,8 +1,32 @@
 #include "electronics.h"
 
+#include <utility>
+
+
     #if defined(TEST_ACTIVE)
     #include <iostream>
     #endif
+
+
+unsigned char junctionSides(Junction j) {
+  switch (j) {
+    case STRAIGHT:           return SIDE_W | SIDE_E;                    // horizontal
+    case CROSS:              return SIDE_N | SIDE_E | SIDE_S | SIDE_W;  // all four
+    case TOP_TO_ALL:         return SIDE_N | SIDE_E | SIDE_W;           // tee, open down
+    case BOT_TO_ALL:         return SIDE_S | SIDE_E | SIDE_W;           // tee, open up
+    case ALL_TO_TOP:         return SIDE_N | SIDE_E | SIDE_S;           // tee, open left
+    case ALL_TO_BOT:         return SIDE_N | SIDE_S | SIDE_W;           // tee, open right
+    case STRAIGHT_INV_TOP:   return SIDE_W | SIDE_N;                    // corner
+    case STRAIGHT_INV_BOT:   return SIDE_E | SIDE_N;                    // corner
+    case STRAIGHT_INV_ALL:   return SIDE_N | SIDE_S;                    // vertical
+    case CROSS_INV_TOP_LEFT: return SIDE_W | SIDE_S;                    // corner
+    case CROSS_INV_BOT_LEFT: return SIDE_E | SIDE_S;                    // corner
+    case CROSS_INV_ALL:      return SIDE_N | SIDE_E | SIDE_S | SIDE_W;  // all four
+  }
+  return 0;
+}
+
+
 MiniGameElectronics::MiniGameElectronics() {
 #if defined(TEST_ACTIVE)
   std::cout << "ELECTRONICS MINIGAME CLASS CREATED\n";
@@ -11,72 +35,116 @@ MiniGameElectronics::MiniGameElectronics() {
 
 
 int MiniGameElectronics::start(Difficulty level) {
-  int highest_random = 4 + 2 * (int)level;
+  const int lv = static_cast<int>(level);
+  const int highest_random = 4 + 2 * lv;  // Level I..IV tile sets
   std::random_device seeder;
   std::mt19937 rng(seeder());
   std::uniform_int_distribution<> distrib(1, highest_random);
+  std::uniform_int_distribution<> pct(0, 99);
 
   sx = 0;
   sy = 0;
 
-  // Randomize junctions
+  // Randomize junctions from the tile set allowed at this difficulty.
   for (auto& row : junction_matrix) {
     for (auto& elem : row) {
-      elem.junction = (Junction)distrib(rng);
+      elem.junction = static_cast<Junction>(distrib(rng));
+      elem.hidden = false;
+      elem.locked = false;
     }
   }
 
+  // Higher difficulties hide the occasional junction and weld others shut.
+  // The source is never hidden or locked so the board always has a way in.
+  for (int r = 0; r < kRows; ++r) {
+    for (int c = 0; c < kCols; ++c) {
+      if (r == kSourceRow && c == kSourceCol)  { continue; }
+      junction_matrix[r][c].hidden = (pct(rng) < 10 * lv);
+      junction_matrix[r][c].locked = (pct(rng) < 3 * lv);
+    }
+  }
 
+  // A turn budget stands in for the trace timer: too many rotations trips it.
+  rotations_left = 36 - 4 * lv;
+  if (rotations_left < 12)  { rotations_left = 12; }
+
+  recomputePower();
   draw();
-
-  // Randomize crossings
-
-///   std::cout << "L" << (int)level << std::endl;
   return 0;
 }
 
 
 void MiniGameElectronics::draw() {
-  for (auto& row : junction_matrix) {
-    for (auto& elem : row) {
-      std::string s;  // TODO-debug
-      switch (/*TODO: type*/(int)elem.junction) {
-        case 1:  s = " = "; break;
-        case 2:  s = " X "; break;
-        case 3:  s = " 3 "; break;
-        case 4:  s = " 4 "; break;
-        case 5:  s = " 5 "; break;
-        case 6:  s = " 6 "; break;
-        case 7:  s = " 7 "; break;
-        case 8:  s = " 8 "; break;
-        default: s = "!!!"; break;
-      }
-      if (elem.hidden)  { s = "[ ]"; }
-      if (elem.locked)  { s = ">" + s.substr(1,1) + "<"; }
-///       std::cout << s;
-    }
-///     std::cout << std::endl;
-  }
+  // Rendering is done by GameState::drawMiniGame(); this exists only to satisfy
+  // the MiniGame interface (and for the TEST_ACTIVE trace below).
+#if defined(TEST_ACTIVE)
+  std::cout << "elec board " << kRows << "x" << kCols
+            << " linked " << connectedTargets() << "/" << targetCount() << "\n";
+#endif
 }
 
 
 Difficulty MiniGameElectronics::getGameDifficulty() {
   Difficulty d = Difficulty::Level1;  // TODO: read from game state
 
-///   d = gameState->getGameDifficulty();
-
   if (d == Difficulty::Level1) {
     return Difficulty::Level1;
   }
 
-///   int dcast = (int)d + (int)mainChar->getElecAptitude();
-///   dcast = (dcast < 1) ? 1 : dcast;
-///   dcast = (dcast > 4) ? 4 : dcast;
-
-///   d = static_cast<Difficulty>(dcast);
-
   return Difficulty::Level1;  // TODO
-///   return d;
+}
+
+
+void MiniGameElectronics::recomputePower() {
+  for (auto& row : powered) {
+    row.fill(false);
+  }
+
+  const int dr[4] = { -1, 0, 1, 0 };
+  const int dc[4] = { 0, 1, 0, -1 };
+  const unsigned char sideBit[4] = { SIDE_N, SIDE_E, SIDE_S, SIDE_W };
+
+  // The source is always powered; it need not expose a side toward anything.
+  std::array<std::pair<int, int>, kRows * kCols> stack {};
+  int top = 0;
+  powered[kSourceRow][kSourceCol] = true;
+  stack[top++] = { kSourceRow, kSourceCol };
+
+  while (top > 0) {
+    const auto [r, c] = stack[--top];
+    const unsigned char here = junctionSides(junction_matrix[r][c].junction);
+
+    for (int d = 0; d < 4; ++d) {
+      if (!(here & sideBit[d]))  { continue; }
+      const int nr = r + dr[d];
+      const int nc = c + dc[d];
+      if (nr < 0 || nr >= kRows || nc < 0 || nc >= kCols)  { continue; }
+      if (powered[nr][nc])  { continue; }
+
+      const unsigned char there = junctionSides(junction_matrix[nr][nc].junction);
+      const unsigned char opposite = sideBit[(d + 2) % 4];
+      if (!(there & opposite))  { continue; }
+
+      powered[nr][nc] = true;
+      stack[top++] = { nr, nc };
+    }
+  }
+}
+
+
+int MiniGameElectronics::connectedTargets() const {
+  int count = 0;
+  for (int r = 0; r < kRows; ++r) {
+    if (powered[r][kCols - 1])  { ++count; }
+  }
+  return count;
+}
+
+
+ElecOutcome MiniGameElectronics::outcome() const {
+  if (isSolved())  { return ElecOutcome::Success; }
+  if (rotations_left <= 0)  { return ElecOutcome::Alarm; }
+  return ElecOutcome::InProgress;
 }
 
 
@@ -94,7 +162,23 @@ void MiniGameElectronics::moveCursor(int dx, int dy) {
 
 void MiniGameElectronics::rotateCursor() {
   Junc& j = junction_matrix[sy][sx];
+  if (j.locked)  { return; }  // welded shut: cannot be turned
+
   int v = (int)j.junction + 1;
   if (v > (int)CROSS_INV_ALL)  { v = (int)STRAIGHT; }
   j.junction = (Junction)v;
+
+  if (rotations_left > 0)  { --rotations_left; }
+  recomputePower();
+}
+
+
+void MiniGameElectronics::setJunction(int row, int col, Junction j) {
+  junction_matrix[row][col].junction = j;
+  recomputePower();
+}
+
+
+void MiniGameElectronics::setLocked(int row, int col, bool locked) {
+  junction_matrix[row][col].locked = locked;
 }
