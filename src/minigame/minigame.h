@@ -9,4 +9,5 @@ class MiniGame {
     virtual Difficulty getGameDifficulty() = 0;
 protected:
     MiniGame() = default;
+    virtual ~MiniGame() = default;
 };

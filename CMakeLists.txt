@@ -32,9 +32,7 @@ set(CAE_SOURCES
         src/minigame/cryptography.cpp
         src/minigame/electronics.cpp
         src/disk/loadsave.cpp
-        src/sound/fx.cpp
         src/sound/music.cpp
-        src/gfx/picloader.cpp
         src/gui/gui.cpp
         src/gui/menu.cpp
         src/gui/point.cpp

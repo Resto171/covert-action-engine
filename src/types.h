@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -14,16 +13,6 @@ enum class DialogType {
   SKILLSELECT,
   MINIGAME,
 };
-
-struct GfxFns {
-    std::function<void()> drawBG = [](){};
-    std::function<void()> drawBox = [](){};
-    std::function<void()> drawText = [](){};
-    std::function<void()> drawImage = [](){};
-    std::function<void()> drawAnimation = [](){};
-    std::function<void()> drawSprite = [](){};
-};
-
 
 enum class Aptitude : int {
     Average   = -1,

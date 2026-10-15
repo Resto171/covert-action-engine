@@ -12,6 +12,7 @@
 #define UI_LINE_HEIGHT 14
 
 #include <array>
+#include <cstdint>
 /// #include <string>
 #include <vector>
 #include <memory>
@@ -21,9 +22,10 @@
 #else
 typedef struct SDL_Rect  { int x,y,w,h; }  SDL_Rect;
 typedef struct SDL_Point  { int x,y; }  SDL_Point;
+// SDL_Color normally comes from SDL_ttf.h/SDL.h; provide it for the NO_SDL build.
+typedef struct SDL_Color  { uint8_t r,g,b,a; }  SDL_Color;
 #endif
 
-#include "../gfx/gfx.h"
 /// #include "../disk/loadsave.h"
 #include "../types.h"
 /// #include "point.h"
@@ -62,7 +64,6 @@ public:
 #ifndef NO_SDL
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_Surface* screen_surface = nullptr;
     TTF_Font* ttf;
     Uint64 next_screen_tick { 0 };
 #else

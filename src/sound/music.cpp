@@ -2,6 +2,9 @@
 #include <SDL_mixer.h>
 /// #include <SDL.h>
 
+#include <cstdio>
+#include <cstring>
+
 #include "music.h"
 
 const char* fnames[] = { "test.wav", };

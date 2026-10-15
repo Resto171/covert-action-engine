@@ -22,10 +22,6 @@ enum {
 void SDL_Quit()  {}
 #endif
 
-extern int case_gen();
-extern Agent agent_gen();
-
-
 // TODO: enforce variable casing
 // TODO: style guide
 // TODO: consistency in spec (unique_ptr vs new)
@@ -75,8 +71,6 @@ int do_covert()
 #ifndef NO_SDL
   play_music(MidiFile::Intro);
 #endif
-
-  Agent q = agent_gen();
 
   bool quit = false;
 #ifndef NO_SDL
