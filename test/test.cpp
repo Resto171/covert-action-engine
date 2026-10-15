@@ -47,3 +47,34 @@ UTEST(cae, disk_load_game_rejects_out_of_range_slot) {
     EXPECT_EQ((int)FileStatus::NotFound, (int)load_game(-1));
 }
 #endif
+
+
+#include "../src/gameplay/basegenerator.h"
+#include <ios>
+
+namespace {
+struct Failing {};
+std::ostream& operator<<(std::ostream& os, const Failing&) {
+    os.setstate(std::ios::failbit);
+    return os;
+}
+}
+
+UTEST(cae, basegenerator_stringify) {
+    BaseGenerator generator;
+
+    EXPECT_TRUE(generator.stringify(42) == "42");
+    EXPECT_TRUE(generator.stringify(-7) == "-7");
+    EXPECT_TRUE(generator.stringify(std::string("abc")) == "abc");
+    EXPECT_TRUE(generator.stringify(true) == "1");
+
+    // A stream insertion failure must surface as a runtime_error, not silently
+    // produce a truncated string.
+    bool threw = false;
+    try {
+        generator.stringify(Failing{});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    EXPECT_TRUE(threw);
+}
