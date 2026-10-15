@@ -4,6 +4,13 @@
 #define SCREEN_HEIGHT 200
 #define SCREEN_SCALE 5
 
+// UI text size, in logical (320x200 design) pixels, and the line spacing used
+// to lay menus out. The font is rasterised at UI_FONT_SIZE * SCREEN_SCALE so
+// the glyphs are crisp; this single value therefore controls how big the text
+// looks on screen. Raise it to make the whole UI text bigger.
+#define UI_FONT_SIZE 12
+#define UI_LINE_HEIGHT 14
+
 #include <array>
 /// #include <string>
 #include <vector>

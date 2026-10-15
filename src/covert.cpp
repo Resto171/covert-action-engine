@@ -98,6 +98,15 @@ int do_covert()
         case SDL_KEYDOWN:
           kbd::handler(e);
           break;
+        case SDL_WINDOWEVENT:
+          // The window is resizable; redraw when its size changes or it is
+          // uncovered. SDL_RenderSetLogicalSize keeps the 320x200 aspect and
+          // letterboxes, so this just repaints.
+          if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+              e.window.event == SDL_WINDOWEVENT_EXPOSED) {
+            gameState->createGUI(gameState->currentScreen);
+          }
+          break;
         default:
           break;
       }  // e->type

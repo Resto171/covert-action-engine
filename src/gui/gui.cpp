@@ -13,9 +13,11 @@ uint64_t SDL_GetTicks64()  { return 0; }
 
 std::unique_ptr<GUI> gui;
 
-// Text point size. The original value (8) rendered strokes that looked too
-// thick once the 320x200 logical surface is scaled up; halved to thin them.
-static constexpr int kFontSize = 4;
+// Glyphs are rasterised at the size they are actually displayed at (the
+// logical size times SCREEN_SCALE). Drawing the resulting texture into a
+// logical-sized rectangle then cancels the renderer's upscale, so the text
+// lands 1:1 on screen instead of being blown up (which made it look thick).
+static constexpr int kFontPx = UI_FONT_SIZE * SCREEN_SCALE;
 
 namespace CAColor {
     SDL_Color BLACK = { 0x00, 0x00, 0x00 };
@@ -72,7 +74,11 @@ const char* screenName(GameScreen s) {
 void GUI::initGUI()
 {
 #ifndef NO_SDL
-  SDL_CreateWindowAndRenderer(SCREEN_SCALE * SCREEN_WIDTH, SCREEN_SCALE * SCREEN_HEIGHT, 0, &window, &renderer);
+  // Nearest-neighbour scaling keeps the pixel art crisp now that the text is
+  // rasterised at its final size instead of being blown up by the renderer.
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+  SDL_CreateWindowAndRenderer(SCREEN_SCALE * SCREEN_WIDTH, SCREEN_SCALE * SCREEN_HEIGHT,
+                              SDL_WINDOW_RESIZABLE, &window, &renderer);
   SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
 
   TTF_Init();  // TODO: move to Font class
@@ -92,7 +98,7 @@ void GUI::initGUI()
 
   ttf = nullptr;
   for (const std::string& fname : candidates) {
-    ttf = TTF_OpenFont(fname.c_str(), kFontSize);
+    ttf = TTF_OpenFont(fname.c_str(), kFontPx);
     if (ttf != nullptr) {
       fprintf(stdout, "Loaded font: %s\n", fname.c_str());
       break;
@@ -142,21 +148,24 @@ void GUI::drawBox(const SDL_Color c, const SDL_Rect r)
 void GUI::drawText(const SDL_Color c, const char* txt, const SDL_Point pt)
 {
 #ifndef NO_SDL
-  int w, h;
-  SDL_Surface* textSurface;
-  SDL_Texture* textTexture;
-  SDL_Rect textRect;
-
-  textSurface = TTF_RenderText_Solid(ttf, txt, c);
-  textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+  // Render at full display resolution, then shrink the destination rectangle
+  // back into logical pixels. The renderer's SCREEN_SCALE upscale cancels the
+  // SCREEN_SCALE we rendered at, so the text is drawn 1:1 and stays crisp.
+  SDL_Surface* textSurface = TTF_RenderText_Blended(ttf, txt, c);
+  if (textSurface == nullptr) {
+    return;
+  }
+  SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+  SDL_Rect textRect {
+    pt.x, pt.y,
+    textSurface->w / SCREEN_SCALE,
+    textSurface->h / SCREEN_SCALE,
+  };
   SDL_FreeSurface(textSurface);
-  TTF_SizeText(ttf, txt, &w, &h);
-  textRect.h = h;
-  textRect.w = w;
-  textRect.x = pt.x;
-  textRect.y = pt.y;
-  SDL_RenderCopy(renderer, textTexture, nullptr, &textRect);
-  SDL_DestroyTexture(textTexture);
+  if (textTexture != nullptr) {
+    SDL_RenderCopy(renderer, textTexture, nullptr, &textRect);
+    SDL_DestroyTexture(textTexture);
+  }
 #else
   fprintf(stdout, "%s\n", txt);
 #endif
@@ -167,7 +176,9 @@ void GUI::centerText(const SDL_Color c, const char* txt, const int y)
 {
   int w = 0;
 #ifndef NO_SDL
-  TTF_SizeText(ttf, txt, &w, nullptr);
+  int h = 0;
+  TTF_SizeText(ttf, txt, &w, &h);
+  w /= SCREEN_SCALE;  // logical pixels, matching drawText
 #endif
   drawText(c, txt, SDL_Point{(SCREEN_WIDTH - w) >> 1, y});
 }
@@ -214,10 +225,10 @@ void GUI::createGUI(GameScreen screen)
 #ifdef PLACEHOLDERS
       _imagePlaceholder(15, 5, 20, 15);
 #endif
-      drawBox(CAColor::WHITE, SDL_Rect{97, 76, 125, 46});
-      drawText(CAColor::WHITE, "Do you want to...", SDL_Point{102, 80});
+      drawBox(CAColor::WHITE, SDL_Rect{80, 72, 165, 84});
+      drawText(CAColor::WHITE, "Do you want to...", SDL_Point{85, 78});
       screenMenu(screen, {" Create a New Character", " Load a Saved Game", " Practice a skill", " Review Hall of Fame"},
-                 SDL_Rect{102, 88, 115, 1});
+                 SDL_Rect{85, 94, 155, 1});
       break;
     case GameScreen::NewCharacter:
       dialogType = DialogType::TEXTENTRY;
@@ -229,14 +240,14 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::SKILLSELECT;
       setBGColor(CAColor::DKBLUE);
       centerText(CAColor::WHITE, "Assign skill points", 20);
-      centerText(CAColor::GREY, "(left/right to change, any other key to continue)", 30);
+      centerText(CAColor::GREY, "(left/right to change, any other key to continue)", 20 + UI_LINE_HEIGHT);
       // TODO: skill list and point allocation
       break;
     case GameScreen::Load:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKGREY);
       centerText(CAColor::WHITE, "Loading is not implemented yet", 40);
-      centerText(CAColor::GREY, "Press any key to return to the menu", 50);
+      centerText(CAColor::GREY, "Press any key to return to the menu", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::SkillPractice:
       setBGColor(CAColor::BLACK);
@@ -248,7 +259,7 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKBLUE);
       centerText(CAColor::WHITE, "Review Hall of Fame", 40);
-      centerText(CAColor::GREY, "Press any key to return to the menu", 50);
+      centerText(CAColor::GREY, "Press any key to return to the menu", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::Chief:
       setBGColor(CAColor::BLACK);
@@ -262,8 +273,8 @@ void GUI::createGUI(GameScreen screen)
     case GameScreen::MastermindLineup:
       dialogType = DialogType::MENU;
       setBGColor(CAColor::BLACK);
-      drawText(CAColor::WHITE, "Max, I'm sure you recognize the head of", SDL_Point{24, 8});
-      drawText(CAColor::WHITE, "this organization among these faces.", SDL_Point{24, 16});
+      drawText(CAColor::WHITE, "Max, I'm sure you recognize the head of", SDL_Point{24, 4});
+      drawText(CAColor::WHITE, "this organization among these faces.", SDL_Point{24, 4 + UI_LINE_HEIGHT});
 #ifdef PLACEHOLDERS
       _imagePlaceholder( 28,  32, 44, 44);
       _imagePlaceholder( 83,  32, 44, 44);
@@ -281,26 +292,26 @@ void GUI::createGUI(GameScreen screen)
       _imagePlaceholder(193, 144, 44, 44);
       _imagePlaceholder(248, 144, 44, 44);
 #endif
-      screenMenu(screen, {" Confirm"}, SDL_Rect{136, 190, 48, 1});
+      screenMenu(screen, {" Confirm"}, SDL_Rect{130, 186, 60, 1});
       break;
     case GameScreen::ShowNewClues:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKBLUE);
       drawBox(CAColor::WHITE, SDL_Rect{10, 10, 300, 180});
       drawText(CAColor::WHITE, "New clues have arrived.", SDL_Point{14, 14});
-      centerText(CAColor::GREY, "Press any key to continue", 180);
+      centerText(CAColor::GREY, "Press any key to continue", 176);
       break;
     case GameScreen::CIAContact:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKGREEN);
       centerText(CAColor::WHITE, "CIA field office", 40);
-      centerText(CAColor::GREY, "Press any key ...", 50);
+      centerText(CAColor::GREY, "Press any key ...", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::CIAMainMenu:
       setBGColor(CAColor::BLACK);
       centerText(CAColor::WHITE, "Field Office", 8);
       screenMenu(screen, {" Leave (return to city)", " Review Data", " Intelligence", " Cryptography"},
-                 SDL_Rect{90, 30, 140, 1});
+                 SDL_Rect{80, 30, 160, 1});
       break;
     case GameScreen::CIAData:
       setBGColor(CAColor::BLACK);
@@ -308,33 +319,33 @@ void GUI::createGUI(GameScreen screen)
       screenMenu(screen, {" Return to Main Menu", " Review Clues", " Review Suspects",
                           " Inside Information", " News Bulletins", " Organization Summary",
                           " City Summary", " Activity Reports"},
-                 SDL_Rect{90, 30, 140, 1});
+                 SDL_Rect{80, 30, 160, 1});
       break;
     case GameScreen::CIAIntel:
       setBGColor(CAColor::BLACK);
       centerText(CAColor::WHITE, "Intelligence", 8);
       screenMenu(screen, {" Return to Main Menu", " Local Scan", " International Scan",
                           " Active Wire Taps", " Accuse Double Agent", " Check with Sam"},
-                 SDL_Rect{90, 30, 140, 1});
+                 SDL_Rect{80, 30, 160, 1});
       break;
     case GameScreen::CIACrypto:
       setBGColor(CAColor::BLACK);
       centerText(CAColor::WHITE, "Cryptography", 8);
       screenMenu(screen, {" Return to Main Menu", " Coded Messages", " Crime Chronology"},
-                 SDL_Rect{90, 30, 140, 1});
+                 SDL_Rect{80, 30, 160, 1});
       break;
     case GameScreen::CodedMessages:
     case GameScreen::CrimeChronology:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKBLUE);
       centerText(CAColor::WHITE, screenName(screen), 40);
-      centerText(CAColor::GREY, "Press any key to go back", 50);
+      centerText(CAColor::GREY, "Press any key to go back", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::CIASam:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKBLUE);
       centerText(CAColor::WHITE, "Sam: nothing new to report.", 40);
-      centerText(CAColor::GREY, "Press any key ...", 50);
+      centerText(CAColor::GREY, "Press any key ...", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::ReviewClues:
     case GameScreen::ReviewSuspects:
@@ -348,7 +359,7 @@ void GUI::createGUI(GameScreen screen)
       setBGColor(CAColor::DKBLUE);
       drawBox(CAColor::WHITE, SDL_Rect{10, 10, 300, 180});
       drawText(CAColor::WHITE, screenName(screen), SDL_Point{14, 14});
-      centerText(CAColor::GREY, "Press any key to go back", 180);
+      centerText(CAColor::GREY, "Press any key to go back", 176);
       break;
     case GameScreen::CIAAddBan:
       dialogType = DialogType::INFO;
@@ -365,7 +376,7 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKCYAN);
       centerText(CAColor::WHITE, "Airport", 40);
-      centerText(CAColor::GREY, "Travel is not implemented yet", 50);
+      centerText(CAColor::GREY, "Travel is not implemented yet", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::Hotel:
       setBGColor(CAColor::BLACK);
@@ -373,7 +384,7 @@ void GUI::createGUI(GameScreen screen)
       // TODO: double check the order against the original game.
       screenMenu(screen, {" Leave the hotel", " Sit in the lounge", " Check out", " Save / Load",
                           " Sleep through the case", " Start a new game", " More...", " Quit"},
-                 SDL_Rect{90, 30, 140, 1});
+                 SDL_Rect{80, 30, 160, 1});
       break;
     case GameScreen::HotelLoungeModal:
     case GameScreen::NewGameMaybe:
@@ -381,13 +392,13 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKGREY);
       centerText(CAColor::WHITE, screenName(screen), 40);
-      centerText(CAColor::GREY, "Press any key to go back", 50);
+      centerText(CAColor::GREY, "Press any key to go back", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::LoadSave:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKGREY);
       centerText(CAColor::WHITE, "Save / Load", 40);
-      centerText(CAColor::GREY, "Press any key to go back", 50);
+      centerText(CAColor::GREY, "Press any key to go back", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::Building1:
     case GameScreen::Building2:
@@ -398,19 +409,19 @@ void GUI::createGUI(GameScreen screen)
       centerText(CAColor::WHITE, screenName(screen), 8);
       screenMenu(screen, {" Place wiretap", " Break into building", " Watch the building",
                           " Check Data", " Leave"},
-                 SDL_Rect{100, 30, 120, 1});
+                 SDL_Rect{95, 30, 140, 1});
       break;
     case GameScreen::BuildingWatch:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKGREEN);
       centerText(CAColor::WHITE, "Watching the building ...", 40);
-      centerText(CAColor::GREY, "Press any key to stop", 50);
+      centerText(CAColor::GREY, "Press any key to stop", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::Typewriter:
       dialogType = DialogType::INFO;
       setBGColor(CAColor::BLACK);
       centerText(CAColor::WHITE, "Typewriter", 40);
-      centerText(CAColor::GREY, "Press any key ...", 50);
+      centerText(CAColor::GREY, "Press any key ...", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::CombatArrest:
     case GameScreen::CombatRecover:
@@ -426,7 +437,7 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKBLUE);
       centerText(CAColor::WHITE, screenName(screen), 40);
-      centerText(CAColor::GREY, "Press any key ...", 50);
+      centerText(CAColor::GREY, "Press any key ...", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::MiniGameCombatStart:
     case GameScreen::MiniGameDrivingStart:
@@ -435,7 +446,7 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKRED);
       centerText(CAColor::WHITE, screenName(screen), 40);
-      centerText(CAColor::GREY, "Minigames are not implemented yet", 50);
+      centerText(CAColor::GREY, "Minigames are not implemented yet", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::GameExitModal:
       dialogType = DialogType::INFO;
@@ -453,7 +464,7 @@ void GUI::createGUI(GameScreen screen)
       dialogType = DialogType::INFO;
       setBGColor(CAColor::DKRED);
       centerText(CAColor::WHITE, "Unhandled screen (placeholder)", 40);
-      centerText(CAColor::GREY, "Press any key to return to the city", 50);
+      centerText(CAColor::GREY, "Press any key to return to the city", 40 + UI_LINE_HEIGHT);
       break;
   }
 #ifndef NO_SDL
@@ -471,10 +482,10 @@ void GUI::createGUIMenu(std::vector<std::string> choice_strings, const SDL_Rect 
   int i = 0;
   for (auto& choice : choice_strings) {
     if (i == 0) {
-      fillBox(CAColor::YELLOW, SDL_Rect{pt.x, pt.y, r0.w, 8});
+      fillBox(CAColor::YELLOW, SDL_Rect{pt.x, pt.y, r0.w, UI_LINE_HEIGHT});
     }
     drawText(CAColor::GREY, choice.c_str(), pt);
-    pt.y += 8;
+    pt.y += UI_LINE_HEIGHT;
     i++;
   }
 }
@@ -500,10 +511,10 @@ void GUI::updateGUIMenu(const std::vector<MenuChoice> choices, SDL_Rect r0)
   SDL_Point pt { r0.x , r0.y };
   for (auto& choice : choices) {
     if (choice.selected) {
-      fillBox(CAColor::YELLOW, SDL_Rect{pt.x, pt.y, r0.w, 8});
+      fillBox(CAColor::YELLOW, SDL_Rect{pt.x, pt.y, r0.w, UI_LINE_HEIGHT});
     }
     drawText(CAColor::GREY, choice.txt.c_str(), pt);
-    pt.y += 8;
+    pt.y += UI_LINE_HEIGHT;
   }
 }
 
@@ -570,7 +581,9 @@ const unsigned char singlepixel_bmp[] = {
 void GUI::_imagePlaceholder(const int& x, const int& y, const int& w, const int& h)
 {
 #ifndef NO_SDL
-  SDL_Surface* ss = SDL_GetWindowSurface(window);
+  // NOTE: must be drawn through the renderer. Calling SDL_GetWindowSurface()
+  // here (as this used to) is invalid while a renderer is active, and it never
+  // actually blitted the placeholder, so images silently never appeared.
   SDL_Rect pxRect { x, y, w, h };
   SDL_RWops* pxIO = SDL_RWFromConstMem(singlepixel_bmp, sizeof(singlepixel_bmp));
   SDL_Surface* pxSurf = SDL_LoadBMP_RW(pxIO, 1);
@@ -578,7 +591,6 @@ void GUI::_imagePlaceholder(const int& x, const int& y, const int& w, const int&
   SDL_FreeSurface(pxSurf);
   SDL_RenderCopy(renderer, pxTex, nullptr, &pxRect);
   SDL_DestroyTexture(pxTex);
-  SDL_RenderPresent(renderer);
 #else
   fprintf(stdout, "<img subst>\n");
 #endif  // !NO_SDL
