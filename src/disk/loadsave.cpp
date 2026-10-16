@@ -52,6 +52,9 @@ bool writeSaveGame(const std::string& path, const SaveGame& save) {
     out << "apt_elec=" << save.apt_elec << "\n";
     out << "difficulty=" << save.difficulty << "\n";
     out << "screen=" << save.screen << "\n";
+    out << "orig_screen=" << save.orig_screen << "\n";
+    out << "modal_sequence=" << save.modal_sequence << "\n";
+    out << "is_twelve=" << save.is_twelve << "\n";
     out << "city=" << save.city << "\n";
     return static_cast<bool>(out);
 }
@@ -85,6 +88,9 @@ bool readSaveGame(const std::string& path, SaveGame& out) {
         else if (key == "apt_elec")    { save.apt_elec = std::atoi(val.c_str()); }
         else if (key == "difficulty")  { save.difficulty = std::atoi(val.c_str()); }
         else if (key == "screen")      { save.screen = std::atoi(val.c_str()); }
+        else if (key == "orig_screen")     { save.orig_screen = std::atoi(val.c_str()); }
+        else if (key == "modal_sequence")  { save.modal_sequence = std::atoi(val.c_str()); }
+        else if (key == "is_twelve")       { save.is_twelve = std::atoi(val.c_str()); }
         else if (key == "city")        { save.city = val; }
     }
 
@@ -108,6 +114,10 @@ SaveGame snapshotSaveGame() {
     if (gameState) {
         save.difficulty = static_cast<int>(gameState->gameDifficulty);
         save.screen = static_cast<int>(gameState->currentScreen);
+        save.orig_screen = static_cast<int>(gameState->origScreen);
+        save.modal_sequence = gameState->modalSequence;
+        save.is_twelve = gameState->isTwelve ? 1 : 0;
+        save.city = gameState->currentCity;
     }
 
     return save;
@@ -130,6 +140,10 @@ void applySaveGame(const SaveGame& save) {
     }
     gameState->setGameDifficulty(static_cast<Difficulty>(save.difficulty));
     gameState->currentScreen = static_cast<GameScreen>(save.screen);
+    gameState->origScreen = static_cast<OriginScreen>(save.orig_screen);
+    gameState->modalSequence = save.modal_sequence;
+    gameState->isTwelve = (save.is_twelve != 0);
+    gameState->currentCity = save.city;
 }
 
 

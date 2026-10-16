@@ -27,6 +27,7 @@ find_package(PNG REQUIRED)
 # intentionally absent: each binary provides its own entry point.
 set(CAE_CORE_SOURCES
         src/covert.cpp
+        src/random.cpp
         src/gameplay/casegenerator.cpp
         src/gameplay/casefile.cpp
         src/gameplay/agentgenerator.cpp

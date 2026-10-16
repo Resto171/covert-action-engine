@@ -35,6 +35,10 @@ public:
   void miniGameRotate();
   void miniGameCancel();  // leave the minigame without a specific outcome
 
+  // The currently running minigame instance, or nullptr when none is active.
+  // Input is forwarded to it through the MiniGame base interface.
+  MiniGame* activeMiniGame();
+
   // Resolve the running minigame: hand the outcome to the FSM, then clear the
   // minigame state. The caller redraws the resulting screen.
   void finishMiniGame(ScreenExitCondition condition);
@@ -47,6 +51,7 @@ public:
   OriginScreen origScreen { OriginScreen::UNKNOWNORIGIN };
   int modalSequence { 0 };
   Difficulty gameDifficulty { Difficulty::Level1 };
+  std::string currentCity;  // the city the player is currently in (save-game state)
 
 private:
   std::unique_ptr<MiniGameElectronics> mGameElec;

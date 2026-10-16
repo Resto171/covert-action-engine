@@ -24,6 +24,85 @@ Bases for the development of the engine are the source codes for Freeciv, Master
   -- Preprocessor macro PLACEHOLDERS should replace all graphics calls --
 
 
+## Prioritized Implementation Plan
+
+This is the ordered roadmap to reach a feature-complete engine (a full playable case:
+briefing -> investigation -> minigames -> capture -> debrief -> score). Work top to bottom;
+each phase unblocks the next. The unchecked items below are cross-referenced to the detailed
+lists further down (`## TODO`).
+
+**Current status snapshot**
+
+- Engine shell (FSM, menus, rendering, save/load, procedural faces, `CRIME*.DTA` parser) works; ~43 unit tests pass in CI.
+- Playable minigames: **Cryptography** (`src/minigame/cryptography.*`), **Electronics/wiretap** (`src/minigame/electronics.*`).
+- Stubbed minigames: **Combat** (`src/minigame/combat.cpp`), **Driving** (`src/minigame/driving.cpp`) — logic and `draw()` are TODOs and neither is instantiated in `GameState`.
+- Missing minigames: safecracking, lockpicking, document/typewriter search.
+- The campaign (case generation, clues, missions, scoring) is stubbed; several screens are placeholders.
+
+**Priority legend:** `P0` blocks everything · `P1` needed for a playable case · `P2` required for "complete" · `P3` polish · `P4` stretch (post-parity).
+
+### P0 — Enablers (must land first)
+
+- [x] Shared `MiniGame` base: difficulty, step timer, input hooks (`onMove`/`onActivate`/`onCancel`) and finished/result plumbing (`src/minigame/minigame.h`); GameState forwards input through it (`activeMiniGame()`)
+- [x] Difficulty plumbing: every minigame records the `Difficulty` passed to `start()` and reports it via `getGameDifficulty()` (hard-coded `Level1` stubs removed from combat/driving/crypto/elec); crypto now scales its message pool with difficulty
+- [x] Single random generator shared across subsystems (`src/random.h` / `src/random.cpp`; `cae::rng`, `cae::randInt`, `cae::randPct`, `cae::seedRng`)
+- [x] Session-state save/load: `screen`, `origScreen`, `modalSequence`, `isTwelve`, `city` and `difficulty` now round-trip (`src/disk/loadsave.cpp`)
+  - [ ] Deferred to P2: persist mission/clues/clock/campaign progress (those data structures do not exist yet)
+- [x] Font loading no longer aborts on a missing font (text paths are null-guarded; a bundled `assets/covert.ttf` is preferred); menus stay navigable (`src/gui/gui.cpp`)
+  - [ ] Follow-up: built-in bitmap font so text renders even with no font file at all
+- [x] Reconcile the minigame exit-condition FSM (`gamestate.cpp`): each game names its outcomes explicitly and falls back to the city for anything unmapped
+
+### P1 — Finish the two remaining core minigames
+
+- [ ] **Combat** (`src/minigame/combat.cpp`, `combat.h:8-24`)
+  - [ ] Room / furniture / door / guard data model (replace empty `Person`/`Room`/`Furniture` structs)
+  - [ ] Room generation + furniture layouts (also `Porting` > Room Generation)
+  - [ ] Draw + input handling; combat accuracy model; inventory effects (uzi, gas mask, kevlar, grenades, stuns)
+  - [ ] NPC/guard AI; bodyguards; multiple health (`Ideas` > F. Bouthillier)
+  - [ ] Terminal password list; safecracking hook; surveillance cameras; traps/timed events
+  - [ ] Wire into `GameState`: instantiate, `enterMiniGame()`, `drawMiniGame()`, and `MiniGameCombatStart` screen (`gamestate.cpp:443-449`, `gui.cpp:535-541`)
+- [ ] **Driving / car chase** (`src/minigame/driving.cpp`, `driving.h`)
+  - [ ] Road/map model, player + pursuer cars, collision and pursuit logic
+  - [ ] Goals: follow / capture / escape; "into hiding"/suspicion rules
+  - [ ] Random NPC traffic; interceptor role for Tailed Victim (`Ideas` > F. Bouthillier)
+  - [ ] Wire into `GameState`: instantiate, `enterMiniGame()`, `drawMiniGame()`, `DrivingCarSelect` + `MiniGameDrivingStart` screens (exit conditions already mapped at `gamestate.cpp:121-129`)
+
+### P2 — Campaign loop (makes a case playable end-to-end)
+
+- [ ] Case generator: participant/org/city/mission name generation (replace "Mark Todo" stub, `casegenerator.cpp:17`)
+- [ ] `Mission` / `MissionSet` bodies (`casegenerator.h:126-136`)
+- [ ] Clues / evidence / mentions (`Overview` > Case Data)
+- [ ] Participant organizational chart + `agent_gen()` (replace hard-coded dummy, `src/gameplay/agentgenerator.cpp`)
+- [ ] "Going into hiding" criteria; double-agent generation and accusation logic
+- [ ] Mastermind capture, rank/skill progression, hall of fame
+- [ ] Briefing -> mission assignment -> **debrief -> scoring** (see `content/debrief.md`)
+- [ ] Time tracker / clock advancing and affecting events
+
+### P3 — Screens, assets, and polish
+
+- [ ] Airport: world map, city-to-city travel, animation (`gui.cpp:472` "Travel is not implemented yet"; `gamestate.cpp:286-287`)
+- [ ] Hotel: actions + gossip (`Porting` > Hotel)
+- [ ] Intelligence HQ: menu, surveillance, clues, activity reports, agent states (`Porting` > HQ)
+- [ ] Building exteriors + interior/room flow (`Porting` > Building Exteriors)
+- [ ] Menus: generic up/down, skill left-right, face selection, entry-kit selection; functional new-character name/skill entry (`gui.cpp:319,326`; `covert.cpp:197-209`)
+- [ ] Placeholder review screens: Review Wiretaps, Coded Messages, Crime Chronology, Check Data, Typewriter (`gui.cpp:513-518`)
+- [ ] Graphics: `PIC` and `PANO` decoders; sprite and `PNG` draw functions (`Porting` > implement PIC/PANO decoders)
+- [ ] Sound: background music + sound effects (asset bundling; `src/sound/music.cpp:31,35`)
+- [ ] Settings/config file + keybinding mapper (`Still Missing`)
+- [ ] Error handling, cross-platform, non-graphical UI completion
+- [ ] Warning cleanup: enable-all-warnings + warnings-as-errors (address the large table in `Build Warnings and Messages`)
+
+### P4 — Stretch / enhancements (not required for parity)
+
+- [ ] Safecracking mini-minigame (`Ideas` > F. Bouthillier)
+- [ ] Lockpicking mini-minigame
+- [ ] Document search / photographing
+- [ ] Mouse/touch on electronics; random NPC traffic in driving
+- [ ] Localization (Latin and non-Latin)
+- [ ] 3D airport / 3D minigame replay
+- [ ] Vector/high-res sprite replacement; ENHANCEMENTS / FIX_ORIGINAL build macros
+
+
 ## TODO
 
 ### Structure and Programming

@@ -34,9 +34,8 @@ enum MissionGoal {
 class MiniGameDriving : public MiniGame {
 public:
   MiniGameDriving();
-  int start(Difficulty level);
+  int start(Difficulty level) override;
   void draw() override;
-  Difficulty getGameDifficulty() override;
 private:
   MissionGoal mission_goal;
   Car car1;

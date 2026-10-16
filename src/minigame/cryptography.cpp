@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <numeric>
 #include <utility>
+#include <vector>
+
+#include "../random.h"
 
 
     #if defined(TEST_ACTIVE)
@@ -33,23 +36,32 @@ MiniGameCryptography::MiniGameCryptography() {
 
 
 int MiniGameCryptography::start(Difficulty level) {
-  (void)level;  // TODO: difficulty affects message length and punctuation
-  std::random_device seeder;
-  std::mt19937 rng(seeder());
+  begin(level);  // records the difficulty and clears any previous result
 
   // Shuffle the alphabet into a random substitution.
   std::string alphabet(26, ' ');
   std::iota(alphabet.begin(), alphabet.end(), 'A');
-  std::shuffle(alphabet.begin(), alphabet.end(), rng);
+  std::shuffle(alphabet.begin(), alphabet.end(), cae::rng());
 
   for (int i = 0; i < 26; ++i) {
     cipher_key[i] = alphabet[i];                 // plaintext 'A'+i -> cipher
     decipher_key[alphabet[i] - 'A'] = 'A' + i;   // cipher -> plaintext 'A'+i
   }
 
-  // Pick a message and encrypt it (non-letters pass through unchanged).
-  std::uniform_int_distribution<> pick(0, (int)(sizeof(kMessages) / sizeof(kMessages[0])) - 1);
-  plain_message = kMessages[pick(rng)];
+  // Pick a message to encrypt (non-letters pass through unchanged). Higher
+  // difficulties draw from a wider pool that includes longer messages, so there
+  // are more letters to decode.
+  const int count = (int)(sizeof(kMessages) / sizeof(kMessages[0]));
+  std::vector<int> order(count);
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(), [](int a, int b) {
+    return std::char_traits<char>::length(kMessages[a]) <
+           std::char_traits<char>::length(kMessages[b]);
+  });
+  int pool = static_cast<int>(level) + 1;  // Level I -> 2 messages, Level IV -> 5
+  if (pool > count)  { pool = count; }
+  if (pool < 1)      { pool = 1; }
+  plain_message = kMessages[order[cae::randInt(0, pool - 1)]];
 
   cipher_message.clear();
   cipher_message.reserve(plain_message.size());
@@ -101,8 +113,17 @@ void MiniGameCryptography::draw() {
 }
 
 
-MiniGameCryptography::~MiniGameCryptography() {}
-
-Difficulty MiniGameCryptography::getGameDifficulty() {
-  return Difficulty::Level1;  // TODO
+void MiniGameCryptography::onMove(int dx, int dy) {
+  moveCursor(dx, dy);
+  tick();
 }
+
+
+void MiniGameCryptography::onActivate() {
+  cycleLetter();
+  tick();
+  if (isSolved())  { finish(ScreenExitCondition::Win); }
+}
+
+
+MiniGameCryptography::~MiniGameCryptography() {}

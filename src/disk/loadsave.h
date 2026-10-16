@@ -20,6 +20,9 @@ struct SaveGame {
     int apt_elec { 0 };
     int difficulty { 1 };
     int screen { 0 };
+    int orig_screen { -1 };   // OriginScreen as int (UNKNOWNORIGIN == -1)
+    int modal_sequence { 0 };
+    int is_twelve { 1 };      // bool as int
     std::string city;
 };
 

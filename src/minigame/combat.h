@@ -90,7 +90,7 @@ public:
   MiniGameCombat(MiniGameCombat&) = delete;
   void operator=(const MiniGameCombat) = delete;
   static MiniGameCombat& Instance();
-  int start(Difficulty level);
+  int start(Difficulty level) override;
 protected:  // TODO?
   Inventory inv;
 private:
@@ -98,7 +98,6 @@ private:
   void operator delete(void*) {};
 
   void draw() override;
-  Difficulty getGameDifficulty() override;
   unsigned char max_guards;
   std::vector<Person> population;
 };

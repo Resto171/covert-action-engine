@@ -1024,3 +1024,190 @@ UTEST(cae, facegen_participant_stays_in_range) {
 }
 
 
+// ---------------------------------------------------------------------------
+// P0: shared random generator
+//
+// Every subsystem must draw from one seeded engine so a run is reproducible.
+// ---------------------------------------------------------------------------
+
+#include "../src/random.h"
+
+UTEST(cae, random_shared_generator_is_seeded_and_reproducible) {
+    cae::seedRng(1234);
+    const int a[8] = { cae::randInt(0, 100000), cae::randInt(0, 100000),
+                       cae::randInt(0, 100000), cae::randInt(0, 100000),
+                       cae::randInt(0, 100000), cae::randInt(0, 100000),
+                       cae::randInt(0, 100000), cae::randInt(0, 100000) };
+
+    // Reseeding with the same seed reproduces the same sequence.
+    cae::seedRng(1234);
+    for (int i = 0; i < 8; ++i) {
+        EXPECT_EQ(a[i], cae::randInt(0, 100000));
+    }
+
+    // A different seed produces a different sequence (extremely unlikely to
+    // collide across all eight draws).
+    cae::seedRng(5678);
+    bool differs = false;
+    for (int i = 0; i < 8; ++i) {
+        if (cae::randInt(0, 100000) != a[i])  { differs = true; }
+    }
+    EXPECT_TRUE(differs);
+}
+
+
+UTEST(cae, random_helpers_respect_their_bounds) {
+    for (int i = 0; i < 256; ++i) {
+        const int p = cae::randPct();
+        EXPECT_TRUE(p >= 0 && p <= 99);
+        const int v = cae::randInt(-3, 7);
+        EXPECT_TRUE(v >= -3 && v <= 7);
+        // Arguments are swapped rather than producing an empty range.
+        const int w = cae::randInt(7, -3);
+        EXPECT_TRUE(w >= -3 && w <= 7);
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// P0: MiniGame base — difficulty plumbing and outcome plumbing
+// ---------------------------------------------------------------------------
+
+#include "../src/minigame/combat.h"
+#include "../src/minigame/driving.h"
+
+UTEST(cae, minigame_difficulty_is_plumbed_and_reported) {
+    // Every minigame records the difficulty passed to start() and reports it
+    // back (previously each returned a hard-coded Level1).
+    MiniGameElectronics e;
+    e.start(Difficulty::Level3);
+    EXPECT_EQ((int)Difficulty::Level3, (int)e.getGameDifficulty());
+
+    MiniGameCryptography c;
+    c.start(Difficulty::Level4);
+    EXPECT_EQ((int)Difficulty::Level4, (int)c.getGameDifficulty());
+
+    MiniGameDriving d;  // still a stub (P1) but must record difficulty
+    d.start(Difficulty::Level2);
+    EXPECT_EQ((int)Difficulty::Level2, (int)d.getGameDifficulty());
+
+    MiniGameCombat::Instance().start(Difficulty::Level1);
+    EXPECT_EQ((int)Difficulty::Level1, (int)MiniGameCombat::Instance().getGameDifficulty());
+}
+
+
+UTEST(cae, minigame_begin_resets_finished_state_on_restart) {
+    MiniGameElectronics g;
+    g.start(Difficulty::Level1);
+
+    // Solve the board, then confirm the round reports a finished outcome.
+    fillElec(g, CROSS);
+    g.setLocked(0, 0, true);  // rotate is a no-op, so the board stays solved
+    g.onActivate();
+    EXPECT_TRUE(g.isFinished());
+    EXPECT_EQ((int)ScreenExitCondition::PhoneBugged, (int)g.result());
+
+    // Starting a new round must clear the previous outcome and step counter.
+    g.start(Difficulty::Level2);
+    EXPECT_TRUE(!g.isFinished());
+    EXPECT_EQ((int)ScreenExitCondition::None, (int)g.result());
+    EXPECT_EQ((int)Difficulty::Level2, (int)g.getGameDifficulty());
+    EXPECT_EQ(0u, g.timer());
+}
+
+
+UTEST(cae, minigame_active_instance_and_input_routing) {
+    gameState = std::make_unique<GameState>();
+    gameState->initMiniGameClasses();
+    EXPECT_TRUE(gameState->activeMiniGame() == nullptr);  // nothing running yet
+
+    gameState->currentScreen = GameScreen::MiniGameElecStart;
+    gameState->getNextScreen();  // enter the electronics minigame
+    ASSERT_TRUE(gameState->activeMiniGame() == gameState->electronics());
+
+    // Input must reach the active game and advance its step counter.
+    MiniGame* mg = gameState->activeMiniGame();
+    const std::uint32_t before = mg->timer();
+    gameState->miniGameMove(1, 0);
+    EXPECT_TRUE(mg->timer() > before);
+
+    gameState->miniGameCancel();
+    EXPECT_TRUE(gameState->activeMiniGame() == nullptr);
+}
+
+
+// ---------------------------------------------------------------------------
+// P0: FSM reconciliation — a minigame outcome that names no specific screen
+// must fall back to the city rather than leaving a stale screen behind.
+// ---------------------------------------------------------------------------
+
+UTEST(cae, fsm_minigame_unmapped_condition_falls_back_to_city) {
+    gameState = std::make_unique<GameState>();
+    gameState->inMiniGame = true;
+    gameState->currentMiniGame = MiniGameType::Driving;
+    gameState->getNextScreen(ScreenExitCondition::None);  // e.g. leaving a chase
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+
+    gameState->currentMiniGame = MiniGameType::Elec;
+    gameState->getNextScreen(ScreenExitCondition::Win);  // unmapped for elec
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+}
+
+
+// ---------------------------------------------------------------------------
+// P0: save/load carries the full session state
+// ---------------------------------------------------------------------------
+
+UTEST(cae, save_game_round_trips_session_fields) {
+    const std::string path = "cae_save_session.tmp";
+
+    SaveGame in;
+    in.callsign = "Session";
+    in.screen = (int)GameScreen::ReviewClues;
+    in.orig_screen = (int)OriginScreen::Data;
+    in.modal_sequence = 2;
+    in.is_twelve = 0;
+    in.city = "Cairo";
+    in.difficulty = (int)Difficulty::Level2;
+
+    ASSERT_TRUE(writeSaveGame(path, in));
+    SaveGame out;
+    ASSERT_TRUE(readSaveGame(path, out));
+    EXPECT_EQ(in.orig_screen, out.orig_screen);
+    EXPECT_EQ(in.modal_sequence, out.modal_sequence);
+    EXPECT_EQ(in.is_twelve, out.is_twelve);
+    EXPECT_TRUE(in.city == out.city);
+
+    std::remove(path.c_str());
+}
+
+
+UTEST(cae, save_and_load_restores_full_session_state) {
+    mainChar = std::make_unique<MainChar>();
+    mainChar->setCallsign("Deep");
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::ReviewOrg;
+    gameState->origScreen = OriginScreen::Data;
+    gameState->modalSequence = 3;
+    gameState->isTwelve = false;
+    gameState->currentCity = "Santiago";
+    gameState->setGameDifficulty(Difficulty::Level4);
+
+    ASSERT_EQ((int)FileStatus::Ok, (int)save_game_slot(4));
+
+    // Wipe the session, then load it back.
+    mainChar = std::make_unique<MainChar>();
+    gameState = std::make_unique<GameState>();
+    ASSERT_EQ((int)FileStatus::Ok, (int)load_game(4));
+
+    EXPECT_TRUE(gameState->currentCity == "Santiago");
+    CAE_EXPECT_SCREEN(GameScreen::ReviewOrg);
+    EXPECT_EQ((int)OriginScreen::Data, (int)gameState->origScreen);
+    EXPECT_EQ(3, gameState->modalSequence);
+    EXPECT_TRUE(!gameState->isTwelve);
+    EXPECT_EQ((int)Difficulty::Level4, (int)gameState->getGameDifficulty());
+
+    std::remove("CV4.SVE");
+}
+
+

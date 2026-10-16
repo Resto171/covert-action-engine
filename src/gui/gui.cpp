@@ -67,11 +67,14 @@ void GUI::initGUI()
     exit(EXIT_FAILURE);
   }
 
-  // TODO: bundle a font with the game instead of relying on the system.
+  // Prefer a font bundled with the game (assets/fonts under the working
+  // directory) before falling back to common system fonts.
   const char* windir = std::getenv("WINDIR");
   const std::string win_fonts = std::string(windir ? windir : "C:\\Windows") + "\\Fonts\\";
 
   const std::string candidates[] = {
+    "assets/covert.ttf",  // bundled with the game (preferred)
+    "fonts/covert.ttf",
     win_fonts + "consola.ttf",  // Consolas
     win_fonts + "lucon.ttf",    // Lucida Console
     win_fonts + "cour.ttf",     // Courier New
@@ -89,11 +92,13 @@ void GUI::initGUI()
     }
   }
   if (ttf == nullptr) {
-    fprintf(stderr, "Could not load a font. Tried:\n");
+    // Not fatal: with no font the text simply is not drawn, but the window
+    // still opens and menus remain navigable (the highlight bar and any
+    // placeholder graphics still render). Bundle assets/covert.ttf to get text.
+    fprintf(stderr, "Warning: could not load a font; text will not be drawn. Tried:\n");
     for (const std::string& fname : candidates) {
       fprintf(stderr, "  %s\n", fname.c_str());
     }
-    exit(EXIT_FAILURE);
   }
 #endif
 }
@@ -163,6 +168,8 @@ void GUI::drawBox(const SDL_Color c, const SDL_Rect r)
 void GUI::drawText(const SDL_Color c, const char* txt, const SDL_Point pt)
 {
 #ifndef NO_SDL
+  // Without a font there is nothing to rasterise (initGUI already warned).
+  if (ttf == nullptr)  { return; }
   // Render at full display resolution, then shrink the destination rectangle
   // back into logical pixels. The renderer's SCREEN_SCALE upscale cancels the
   // SCREEN_SCALE we rendered at, so the text is drawn 1:1 and stays crisp.
@@ -193,6 +200,7 @@ void GUI::centerText(const SDL_Color c, const char* txt, const int y)
 {
   int w = 0;
 #ifndef NO_SDL
+  if (ttf == nullptr)  { return; }  // nothing to measure or draw without a font
   int h = 0;
   TTF_SizeText(ttf, txt, &w, &h);
   w /= SCREEN_SCALE;  // logical pixels, matching drawText

@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "../random.h"
+
 
     #if defined(TEST_ACTIVE)
     #include <iostream>
@@ -35,12 +37,9 @@ MiniGameElectronics::MiniGameElectronics() {
 
 
 int MiniGameElectronics::start(Difficulty level) {
+  begin(level);  // records the difficulty and clears any previous result
   const int lv = static_cast<int>(level);
   const int highest_random = 4 + 2 * lv;  // Level I..IV tile sets
-  std::random_device seeder;
-  std::mt19937 rng(seeder());
-  std::uniform_int_distribution<> distrib(1, highest_random);
-  std::uniform_int_distribution<> pct(0, 99);
 
   sx = 0;
   sy = 0;
@@ -48,7 +47,7 @@ int MiniGameElectronics::start(Difficulty level) {
   // Randomize junctions from the tile set allowed at this difficulty.
   for (auto& row : junction_matrix) {
     for (auto& elem : row) {
-      elem.junction = static_cast<Junction>(distrib(rng));
+      elem.junction = static_cast<Junction>(cae::randInt(1, highest_random));
       elem.hidden = false;
       elem.locked = false;
     }
@@ -59,8 +58,8 @@ int MiniGameElectronics::start(Difficulty level) {
   for (int r = 0; r < kRows; ++r) {
     for (int c = 0; c < kCols; ++c) {
       if (r == kSourceRow && c == kSourceCol)  { continue; }
-      junction_matrix[r][c].hidden = (pct(rng) < 10 * lv);
-      junction_matrix[r][c].locked = (pct(rng) < 3 * lv);
+      junction_matrix[r][c].hidden = (cae::randPct() < 10 * lv);
+      junction_matrix[r][c].locked = (cae::randPct() < 3 * lv);
     }
   }
 
@@ -84,14 +83,20 @@ void MiniGameElectronics::draw() {
 }
 
 
-Difficulty MiniGameElectronics::getGameDifficulty() {
-  Difficulty d = Difficulty::Level1;  // TODO: read from game state
+void MiniGameElectronics::onMove(int dx, int dy) {
+  moveCursor(dx, dy);
+  tick();
+}
 
-  if (d == Difficulty::Level1) {
-    return Difficulty::Level1;
-  }
 
-  return Difficulty::Level1;  // TODO
+void MiniGameElectronics::onActivate() {
+  rotateCursor();  // a no-op on a locked junction
+  tick();
+  // Rotating can finish the puzzle (all targets linked) or exhaust the turn
+  // budget (the trace completes); anything else keeps the board open.
+  const ElecOutcome o = outcome();
+  if (o == ElecOutcome::Success)  { finish(ScreenExitCondition::PhoneBugged); }
+  else if (o == ElecOutcome::Alarm) { finish(ScreenExitCondition::Lose); }
 }
 
 

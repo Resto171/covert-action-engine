@@ -70,9 +70,10 @@ public:
 
   MiniGameElectronics();
   ~MiniGameElectronics() = default;
-  int start(Difficulty level);
+  int start(Difficulty level) override;
   void draw() override;
-  Difficulty getGameDifficulty() override;
+  void onMove(int dx, int dy) override;
+  void onActivate() override;
 
   // Inspection, used by the renderer and by tests.
   Junction junctionAt(int row, int col) const { return junction_matrix[row][col].junction; }

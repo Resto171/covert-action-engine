@@ -12,15 +12,11 @@ MiniGameDriving::MiniGameDriving() {
 
 
 int MiniGameDriving::start(Difficulty level) {
-  (void)level;  // TODO: use the difficulty
+  begin(level);  // records the difficulty and clears any previous result
   return 0;
 }
 
 void MiniGameDriving::draw() {
   // TODO
-}
-
-Difficulty MiniGameDriving::getGameDifficulty() {
-  return Difficulty::Level1;  // TODO
 }
 

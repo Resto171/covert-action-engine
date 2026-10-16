@@ -14,9 +14,10 @@ class MiniGameCryptography : public MiniGame {
 public:
   MiniGameCryptography();
   ~MiniGameCryptography() override;
-  int start(Difficulty level);
+  int start(Difficulty level) override;
   void draw() override;
-  Difficulty getGameDifficulty() override;
+  void onMove(int dx, int dy) override;
+  void onActivate() override;
 
   // Inspection, used by the renderer and by tests.
   const std::string& cipherMessage() const { return cipher_message; }

@@ -108,36 +108,47 @@ void GameState::getNextScreen(ScreenExitCondition condition)
   // TODO: possibly clear `origScreen` and set an overrideable default
 
   if (this->inMiniGame) {
+    // Every minigame outcome maps to a screen here. Each case names its
+    // terminal outcomes explicitly and falls back to the city for anything it
+    // does not recognise, so an unmapped condition can never leave the FSM on a
+    // stale minigame screen.
     switch (this->currentMiniGame) {
       case MiniGameType::Inactive:
         // No minigame running; nothing to transition from.
         break;
       case MiniGameType::Combat:
-        if (condition == ScreenExitCondition::None)  { currentScreen = GameScreen::CityMainMenu; }
-        if (condition == ScreenExitCondition::Arrest)  { currentScreen = GameScreen::CombatArrest; }
-        if (condition == ScreenExitCondition::Shot)  { currentScreen = GameScreen::CombatRecover; }
-        if (condition == ScreenExitCondition::Lose)  { currentScreen = GameScreen::CombatCaptive; }
+        switch (condition) {
+          case ScreenExitCondition::Arrest: currentScreen = GameScreen::CombatArrest;  break;
+          case ScreenExitCondition::Shot:   currentScreen = GameScreen::CombatRecover; break;
+          case ScreenExitCondition::Lose:   currentScreen = GameScreen::CombatCaptive; break;
+          default:                          currentScreen = GameScreen::CityMainMenu;  break;
+        }
         break;
       case MiniGameType::Driving:
-        /// TODO: what happens when pressing <Esc>?
-        /// if (condition == ScreenExitCondition::None)  { currentScreen = GameScreen::CityMainMenu; }
-        if (condition == ScreenExitCondition::Arrest)  { currentScreen = GameScreen::DrivingArrest; }
-        if (condition == ScreenExitCondition::Lose)  { currentScreen = GameScreen::DrivingTargetGone; }
-        if (condition == ScreenExitCondition::Intercepted)  { currentScreen = GameScreen::DrivingShootout; }
-        if (condition == ScreenExitCondition::Win)  { currentScreen = GameScreen::DrivingEscapedPursuer; }
-        /// TODO: differentiate between 'hunter' and 'hunted' outcome
+        switch (condition) {
+          case ScreenExitCondition::Arrest:      currentScreen = GameScreen::DrivingArrest;          break;
+          case ScreenExitCondition::Lose:        currentScreen = GameScreen::DrivingTargetGone;      break;
+          case ScreenExitCondition::Intercepted: currentScreen = GameScreen::DrivingShootout;        break;
+          case ScreenExitCondition::Win:         currentScreen = GameScreen::DrivingEscapedPursuer;  break;
+          /// TODO: differentiate between 'hunter' and 'hunted' outcome
+          default:                               currentScreen = GameScreen::CityMainMenu;           break;
+        }
         break;
       case MiniGameType::Crypto:
-        currentScreen = goBackFrom(origScreen);
+        // Crypto is a practice/puzzle detour; return to wherever it was launched.
         /* TODO: back to referrer. Are all clues handled by clue routine? */
+        currentScreen = goBackFrom(origScreen);
         break;
       case MiniGameType::Elec:
         /// TODO: differentiate between 'trace' and 'phone bug'
-        if (condition == ScreenExitCondition::None)  { currentScreen = GameScreen::CityMainMenu; }
-        if (condition == ScreenExitCondition::Timeout)  { currentScreen = GameScreen::CityMainMenu; }
-        if (condition == ScreenExitCondition::PhoneBugged)  { currentScreen = GameScreen::ElecModalBugged; }
-        if (condition == ScreenExitCondition::CarTraced)  { currentScreen = GameScreen::ElecModalTrace; }
-        if (condition == ScreenExitCondition::Lose)  { currentScreen = GameScreen::ElecModalAlarm; }
+        switch (condition) {
+          case ScreenExitCondition::PhoneBugged: currentScreen = GameScreen::ElecModalBugged; break;
+          case ScreenExitCondition::CarTraced:   currentScreen = GameScreen::ElecModalTrace;  break;
+          case ScreenExitCondition::Lose:        currentScreen = GameScreen::ElecModalAlarm;  break;
+          case ScreenExitCondition::None:
+          case ScreenExitCondition::Timeout:
+          default:                               currentScreen = GameScreen::CityMainMenu;   break;
+        }
         break;
     }
   } else {  // this->inMiniGame is false
@@ -454,43 +465,33 @@ void GameState::enterMiniGame(MiniGameType miniGame)
 void GameState::miniGameMove(int dx, int dy)
 {
   if (!inMiniGame)  { return; }
-  switch (currentMiniGame) {
-    case MiniGameType::Elec:
-      if (mGameElec)  { mGameElec->moveCursor(dx, dy); }
-      break;
-    case MiniGameType::Crypto:
-      if (mGameCrypto)  { mGameCrypto->moveCursor(dx, dy); }
-      break;
-    default:
-      break;
-  }
+  MiniGame* mg = activeMiniGame();
+  if (mg == nullptr || mg->isFinished())  { return; }
+  mg->onMove(dx, dy);
 }
 
 
 void GameState::miniGameRotate()
 {
   if (!inMiniGame)  { return; }
+  MiniGame* mg = activeMiniGame();
+  if (mg == nullptr || mg->isFinished())  { return; }
+  mg->onActivate();
+  // The game records its own outcome; if it has finished, hand it to the FSM.
+  if (mg->isFinished())  { finishMiniGame(mg->result()); }
+}
+
+
+MiniGame* GameState::activeMiniGame()
+{
   switch (currentMiniGame) {
-    case MiniGameType::Elec: {
-      if (!mGameElec)  { return; }
-      mGameElec->rotateCursor();
-      // Rotating can finish the puzzle (all targets linked) or exhaust the turn
-      // budget (the trace completes). Anything else keeps the board open.
-      switch (mGameElec->outcome()) {
-        case ElecOutcome::Success:  finishMiniGame(ScreenExitCondition::PhoneBugged);  break;
-        case ElecOutcome::Alarm:    finishMiniGame(ScreenExitCondition::Lose);         break;
-        case ElecOutcome::InProgress:  break;
-      }
-      break;
-    }
-    case MiniGameType::Crypto: {
-      if (!mGameCrypto)  { return; }
-      mGameCrypto->cycleLetter();
-      if (mGameCrypto->isSolved())  { finishMiniGame(ScreenExitCondition::Win); }
-      break;
-    }
-    default:
-      break;
+    case MiniGameType::Elec:   return mGameElec.get();
+    case MiniGameType::Crypto: return mGameCrypto.get();
+    // Combat and Driving are not instantiated yet (see the P1 roadmap in TODO.md).
+    case MiniGameType::Combat:
+    case MiniGameType::Driving:
+    case MiniGameType::Inactive:
+    default:                   return nullptr;
   }
 }
 

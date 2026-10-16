@@ -13,7 +13,7 @@ MiniGameCombat::MiniGameCombat() {
 
 #include <iostream>  // TODO-debug
 int MiniGameCombat::start(Difficulty level) {
-  (void)level;  // TODO: use the difficulty
+  begin(level);  // records the difficulty and clears any previous result
   inv.uzi = false;
   inv.gas_mask = false;
   inv.motion_detector = false;
@@ -39,8 +39,4 @@ void MiniGameCombat::draw() {
 MiniGameCombat& MiniGameCombat::Instance() {
   static MiniGameCombat instance;
   return instance;
-}
-
-Difficulty MiniGameCombat::getGameDifficulty() {
-  return Difficulty::Level1;  // TODO
 }
