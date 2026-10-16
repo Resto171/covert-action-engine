@@ -7,6 +7,7 @@ uint64_t SDL_GetTicks64()  { return 0; }
 #include "gui.h"
 
 #include "../disk/loadsave.h"
+#include "facegen.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -100,6 +101,11 @@ void GUI::initGUI()
 GUI::~GUI()
 {
 #ifndef NO_SDL
+  for (auto& entry : faceCache) {
+    if (entry.second != nullptr) SDL_DestroyTexture(entry.second);
+  }
+  faceCache.clear();
+
   if (ttf != nullptr) {
     TTF_CloseFont(ttf);
     ttf = nullptr;
@@ -206,6 +212,63 @@ bool GUI::guiShouldRefresh()  { return dialogType == DialogType::INFOTIMER; }
 void GUI::drawMiniGame()  {}  // overridden by GameState to draw the active minigame
 
 
+#ifndef NO_SDL
+SDL_Texture* GUI::_faceTexture(const Face& face)
+{
+  // Pack the six components into a cache key.
+  const uint64_t key = static_cast<uint64_t>(face.gender_id)
+      | (static_cast<uint64_t>(face.hair_id) << 8)
+      | (static_cast<uint64_t>(face.eye_id) << 16)
+      | (static_cast<uint64_t>(face.skin_id) << 24)
+      | (static_cast<uint64_t>(face.clothing_id) << 32)
+      | (static_cast<uint64_t>(face.accessory_id) << 40);
+
+  auto it = faceCache.find(key);
+  if (it != faceCache.end()) return it->second;
+
+  const facegen::Image img = facegen::compose(face);
+  const std::vector<facegen::Color>& pal = facegen::palette();
+
+  SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(
+      0, img.width, img.height, 32, SDL_PIXELFORMAT_RGBA32);
+  if (surf == nullptr) return nullptr;
+
+  SDL_LockSurface(surf);
+  const SDL_PixelFormat* fmt = surf->format;
+  auto* dst = static_cast<uint32_t*>(surf->pixels);
+  const int row_px = surf->pitch / static_cast<int>(sizeof(uint32_t));
+  for (int y = 0; y < img.height; ++y) {
+    for (int x = 0; x < img.width; ++x) {
+      const facegen::Color c = pal[img.indices[static_cast<std::size_t>(y) * img.width + x]];
+      dst[y * row_px + x] = SDL_MapRGBA(fmt, c.r, c.g, c.b, c.a);
+    }
+  }
+  SDL_UnlockSurface(surf);
+
+  SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+  SDL_FreeSurface(surf);
+  if (tex != nullptr) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+
+  faceCache[key] = tex;
+  return tex;
+}
+#endif
+
+
+void GUI::drawFace(const Face& face, const SDL_Rect& r)
+{
+#ifndef NO_SDL
+  SDL_Texture* tex = _faceTexture(face);
+  if (tex == nullptr) return;
+  SDL_RenderCopy(renderer, tex, nullptr, &r);
+#else
+  (void)face;
+  (void)r;
+  fprintf(stdout, "<face subst>\n");
+#endif
+}
+
+
 void GUI::createGUI(GameScreen screen)
 {
   // Entering a different screen invalidates any menu state built for the previous one.
@@ -243,9 +306,7 @@ void GUI::createGUI(GameScreen screen)
       break;
     case GameScreen::BeginMenu:
       setBGColor(CAColor::BLACK);
-#ifdef PLACEHOLDERS
-      _imagePlaceholder(15, 5, 20, 15);
-#endif
+      drawFace(facegen::playerFace(), SDL_Rect{12, 4, 34, 40});
       drawBox(CAColor::WHITE, SDL_Rect{80, 72, 165, 84});
       drawText(CAColor::WHITE, "Do you want to...", SDL_Point{85, 78});
       screenMenu(screen, {" Create a New Character", " Load a Saved Game", " Practice a skill", " Review Hall of Fame"},
@@ -285,9 +346,7 @@ void GUI::createGUI(GameScreen screen)
       break;
     case GameScreen::Chief:
       setBGColor(CAColor::BLACK);
-#ifdef PLACEHOLDERS
-      _imagePlaceholder(15, 5, 20, 15);
-#endif
+      drawFace(facegen::chiefFace(), SDL_Rect{10, 6, 40, 46});
       dialogType = DialogType::INFO;
       drawBox(CAColor::WHITE, SDL_Rect{1, 101, 318, 98});
       drawText(CAColor::WHITE, "Chief says ...", SDL_Point{4, 104});
@@ -297,23 +356,17 @@ void GUI::createGUI(GameScreen screen)
       setBGColor(CAColor::BLACK);
       drawText(CAColor::WHITE, "Max, I'm sure you recognize the head of", SDL_Point{24, 4});
       drawText(CAColor::WHITE, "this organization among these faces.", SDL_Point{24, 4 + UI_LINE_HEIGHT});
-#ifdef PLACEHOLDERS
-      _imagePlaceholder( 28,  32, 44, 44);
-      _imagePlaceholder( 83,  32, 44, 44);
-      _imagePlaceholder(138,  32, 44, 44);
-      _imagePlaceholder(193,  32, 44, 44);
-      _imagePlaceholder(248,  32, 44, 44);
-      _imagePlaceholder( 28,  88, 44, 44);
-      _imagePlaceholder( 83,  88, 44, 44);
-      _imagePlaceholder(138,  88, 44, 44);
-      _imagePlaceholder(193,  88, 44, 44);
-      _imagePlaceholder(248,  88, 44, 44);
-      _imagePlaceholder( 28, 144, 44, 44);
-      _imagePlaceholder( 83, 144, 44, 44);
-      _imagePlaceholder(138, 144, 44, 44);
-      _imagePlaceholder(193, 144, 44, 44);
-      _imagePlaceholder(248, 144, 44, 44);
-#endif
+      {
+        // 15 candidates in a 5x3 grid, as in the original lineup.
+        const int col_x[5] = {28, 83, 138, 193, 248};
+        const int row_y[3] = {32, 88, 144};
+        for (int row = 0; row < 3; ++row) {
+          for (int col = 0; col < 5; ++col) {
+            drawFace(facegen::candidateFace(row * 5 + col),
+                     SDL_Rect{col_x[col], row_y[row], 44, 44});
+          }
+        }
+      }
       screenMenu(screen, {" Confirm"}, SDL_Rect{130, 186, 60, 1});
       break;
     case GameScreen::ShowNewClues:
@@ -379,8 +432,16 @@ void GUI::createGUI(GameScreen screen)
       centerText(CAColor::WHITE, "Sam: nothing new to report.", 40);
       centerText(CAColor::GREY, "Press any key ...", 40 + UI_LINE_HEIGHT);
       break;
-    case GameScreen::ReviewClues:
     case GameScreen::ReviewSuspects:
+      dialogType = DialogType::INFO;
+      setBGColor(CAColor::DKBLUE);
+      drawBox(CAColor::WHITE, SDL_Rect{10, 10, 300, 180});
+      drawText(CAColor::WHITE, screenName(screen), SDL_Point{14, 14});
+      drawFace(facegen::candidateFace(7), SDL_Rect{24, 40, 64, 64});
+      drawText(CAColor::WHITE, "Suspect", SDL_Point{104, 40});
+      centerText(CAColor::GREY, "Press any key to go back", 176);
+      break;
+    case GameScreen::ReviewClues:
     case GameScreen::ReviewInsideInfo:
     case GameScreen::ReviewNews:
     case GameScreen::ReviewOrg:

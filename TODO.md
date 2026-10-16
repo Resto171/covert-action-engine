@@ -80,6 +80,8 @@ Bases for the development of the engine are the source codes for Freeciv, Master
 - [ ] Combat minigame
   - [ ] Terminal password list
 - [ ] Name and face generator
+  - [x] Face generator (procedural, composed from the Face components; src/gui/facegen.cpp)
+  - [ ] Name generator
 - [ ] Room generator
   - Are the rooms/layouts truly random or in any way predictable?
 - [ ] Determine when each participant goes into hiding
@@ -88,6 +90,7 @@ Bases for the development of the engine are the source codes for Freeciv, Master
 - [ ] (stretch goal) Localization
 - [ ] Graphics
   - [x] Placeholder proof-of-concept
+  - [x] Procedurally generated portraits (drawn from the Face components; no art files required)
   - [ ] Placeholder intercepts calls to each draw function
   - [ ] Implement draw function for _.png_
   - [ ] Implement draw function for _.pic_

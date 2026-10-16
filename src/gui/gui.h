@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 /// #include <string>
+#include <map>
 #include <vector>
 #include <memory>
 
@@ -79,12 +80,18 @@ public:
     // Rendered for minigame screens. The base class draws nothing; GameState
     // overrides it to draw the currently running minigame.
     virtual void drawMiniGame();
+    // Draw a procedurally generated portrait (see facegen.h) scaled into `r`.
+    void drawFace(const Face& face, const SDL_Rect& r);
 #ifdef PLACEHOLDERS
     void _imagePlaceholder(const int&, const int&, const int&, const int&);
 #endif
 ///   void /*TODO*/choiceS  electionCallback()  { NULL; }
 /// protected:
 #ifndef NO_SDL
+    // Composed faces are cached as textures: createGUI() runs on every screen
+    // change, and a face never changes once its components are fixed.
+    SDL_Texture* _faceTexture(const Face& face);
+    std::map<uint64_t, SDL_Texture*> faceCache;
     SDL_Window* window { nullptr };
     SDL_Renderer* renderer { nullptr };
     TTF_Font* ttf { nullptr };

@@ -38,6 +38,7 @@ set(CAE_CORE_SOURCES
         src/disk/loadsave.cpp
         src/sound/music.cpp
         src/gui/gui.cpp
+        src/gui/facegen.cpp
         src/gui/menu.cpp
         src/gui/point.cpp
 )

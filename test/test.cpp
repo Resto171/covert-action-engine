@@ -863,3 +863,88 @@ UTEST(cae, load_case_file_handles_missing_files) {
 }
 
 
+#include "../src/gui/facegen.h"
+
+#include <algorithm>
+#include <set>
+
+UTEST(cae, facegen_compose_has_expected_shape) {
+    const facegen::Image img = facegen::compose(facegen::playerFace());
+    EXPECT_EQ(facegen::kWidth, img.width);
+    EXPECT_EQ(facegen::kHeight, img.height);
+    EXPECT_EQ((std::size_t)(facegen::kWidth * facegen::kHeight), img.indices.size());
+
+    const std::size_t pal_size = facegen::palette().size();
+    ASSERT_TRUE(pal_size > 1);
+    // Every produced index must address the palette.
+    for (uint8_t idx : img.indices) {
+        EXPECT_TRUE((std::size_t)idx < pal_size);
+    }
+    // Index 0 is the transparent background.
+    EXPECT_EQ((unsigned)0, (unsigned)facegen::palette()[0].a);
+}
+
+UTEST(cae, facegen_is_deterministic) {
+    const Face a = facegen::makeFace(12345);
+    const Face b = facegen::makeFace(12345);
+    EXPECT_EQ((int)a.gender_id, (int)b.gender_id);
+    EXPECT_EQ((int)a.hair_id, (int)b.hair_id);
+    EXPECT_EQ((int)a.eye_id, (int)b.eye_id);
+    EXPECT_EQ((int)a.skin_id, (int)b.skin_id);
+    EXPECT_EQ((int)a.clothing_id, (int)b.clothing_id);
+    EXPECT_EQ((int)a.accessory_id, (int)b.accessory_id);
+
+    EXPECT_TRUE(facegen::compose(a).indices == facegen::compose(b).indices);
+    EXPECT_TRUE(facegen::candidateFace(3).hair_id == facegen::candidateFace(3).hair_id);
+}
+
+UTEST(cae, facegen_different_seeds_differ) {
+    // Not every pair must differ, but a run of distinct seeds should not all
+    // collapse to the same face.
+    std::set<std::vector<uint8_t>> seen;
+    for (uint32_t s = 0; s < 24; ++s) {
+        seen.insert(facegen::compose(facegen::makeFace(s)).indices);
+    }
+    EXPECT_TRUE(seen.size() >= 12);
+}
+
+UTEST(cae, facegen_composes_a_visible_face) {
+    const facegen::Image img = facegen::compose(facegen::chiefFace());
+    // The middle of the canvas must be part of the face (not transparent).
+    const std::size_t mid = (std::size_t)(facegen::kHeight / 2) * img.width + (facegen::kWidth / 2);
+    EXPECT_TRUE(img.indices[mid] != 0);
+
+    // A portrait is opaque somewhere: count the non-transparent pixels.
+    const std::size_t drawn =
+        std::count_if(img.indices.begin(), img.indices.end(), [](uint8_t i) { return i != 0; });
+    EXPECT_TRUE(drawn > (std::size_t)(facegen::kWidth * facegen::kHeight) / 4);
+}
+
+UTEST(cae, facegen_tolerates_any_component_ids) {
+    // Component ids come from data files and may be anything; out-of-range
+    // values must still reduce cleanly rather than read past the palette.
+    Face f{};
+    f.gender_id = 0xFF;
+    f.hair_id = 0xFF;
+    f.eye_id = 0xFF;
+    f.skin_id = 0xFF;
+    f.clothing_id = 0xFF;
+    f.accessory_id = 0xFF;
+
+    const facegen::Image img = facegen::compose(f);
+    const std::size_t pal_size = facegen::palette().size();
+    for (uint8_t idx : img.indices) {
+        EXPECT_TRUE((std::size_t)idx < pal_size);
+    }
+}
+
+UTEST(cae, facegen_candidate_faces_are_distinct) {
+    // The 15-slot lineup should show 15 different people.
+    std::set<std::vector<uint8_t>> seen;
+    for (int i = 0; i < 15; ++i) {
+        seen.insert(facegen::compose(facegen::candidateFace(i)).indices);
+    }
+    EXPECT_EQ((std::size_t)15, seen.size());
+}
+
+
