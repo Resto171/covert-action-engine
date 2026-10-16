@@ -82,6 +82,10 @@ public:
     virtual void drawMiniGame();
     // Draw a procedurally generated portrait (see facegen.h) scaled into `r`.
     void drawFace(const Face& face, const SDL_Rect& r);
+    // The portrait for lineup slot `slot`. When a case has been loaded its
+    // participants provide the faces (so suspects stay recognisable); otherwise
+    // a stable procedural face is used. The lineup is cached for the session.
+    Face lineupFace(int slot);
 #ifdef PLACEHOLDERS
     void _imagePlaceholder(const int&, const int&, const int&, const int&);
 #endif
@@ -105,6 +109,10 @@ public:
     GameScreen currentMenuScreen { GameScreen::UNKNOWN };
     int selectedChoice { 0 };
     DialogType dialogType { DialogType::INFOTIMER };
+    // Session cache for the mastermind lineup (see lineupFace). Rebuilt when
+    // the number of participants in the active case changes.
+    std::vector<Face> lineupFaces;
+    int lineupSourceCount { -1 };
 };
 
 

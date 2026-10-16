@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "../gameplay/casefile.h"
 #include "../types.h"
 
 // The original game drew portraits by compositing artwork from its .PIC files.
@@ -49,5 +50,12 @@ Face playerFace();
 // One of the candidate/mastermind faces for the lineup. `index` may be any
 // value; it selects a stable face for that slot.
 Face candidateFace(int index);
+
+// A stable face for a case participant. The role name fixes the identity, so
+// the same person always looks the same, while rank, exposure, clue type and
+// the mastermind flag nudge age, marks and distinctive features. Uses a
+// platform-independent hash, so a given participant looks identical across
+// runs and builds.
+Face makeFaceFromParticipant(const CaseParticipant& participant);
 
 }  // namespace facegen

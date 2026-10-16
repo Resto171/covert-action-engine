@@ -7,6 +7,7 @@ uint64_t SDL_GetTicks64()  { return 0; }
 #include "gui.h"
 
 #include "../disk/loadsave.h"
+#include "../gameplay/casegenerator.h"  // caseFiles: the loaded case templates
 #include "facegen.h"
 
 #include <cstdio>
@@ -269,6 +270,39 @@ void GUI::drawFace(const Face& face, const SDL_Rect& r)
 }
 
 
+Face GUI::lineupFace(int slot)
+{
+  // The lineup holds this many suspects (a 5x3 grid, as in the original).
+  constexpr int kLineupSlots = 15;
+
+  // There is no "active case" selector yet, so the first loaded template stands
+  // in for the case in play. Empty caseFiles (e.g. the data files are absent)
+  // simply leaves the procedural lineup, which is the previous behaviour.
+  const CaseFile* active = caseFiles.empty() ? nullptr : &caseFiles.front();
+  const int count = active == nullptr ? 0 : static_cast<int>(active->participants.size());
+
+  // Build once per case (and rebuild if the participant count changes).
+  if (lineupSourceCount != count || lineupFaces.size() != static_cast<std::size_t>(kLineupSlots)) {
+    lineupSourceCount = count;
+    lineupFaces.clear();
+    lineupFaces.reserve(kLineupSlots);
+    for (int i = 0; i < kLineupSlots; ++i) {
+      if (active != nullptr && i < count) {
+        lineupFaces.push_back(facegen::makeFaceFromParticipant(active->participants[static_cast<std::size_t>(i)]));
+      } else {
+        // Fewer participants than slots (or no case at all): fill the rest with
+        // stable procedural faces.
+        lineupFaces.push_back(facegen::candidateFace(i));
+      }
+    }
+  }
+
+  if (slot < 0) slot = 0;
+  if (slot >= kLineupSlots) slot = kLineupSlots - 1;
+  return lineupFaces[static_cast<std::size_t>(slot)];
+}
+
+
 void GUI::createGUI(GameScreen screen)
 {
   // Entering a different screen invalidates any menu state built for the previous one.
@@ -362,7 +396,7 @@ void GUI::createGUI(GameScreen screen)
         const int row_y[3] = {32, 88, 144};
         for (int row = 0; row < 3; ++row) {
           for (int col = 0; col < 5; ++col) {
-            drawFace(facegen::candidateFace(row * 5 + col),
+            drawFace(lineupFace(row * 5 + col),
                      SDL_Rect{col_x[col], row_y[row], 44, 44});
           }
         }

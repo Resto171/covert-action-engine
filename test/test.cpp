@@ -947,4 +947,80 @@ UTEST(cae, facegen_candidate_faces_are_distinct) {
     EXPECT_EQ((std::size_t)15, seen.size());
 }
 
+namespace {
+CaseParticipant makeParticipant(const std::string& role, uint8_t rank = 0,
+                                uint8_t exposure = 0, uint8_t clue = 0,
+                                bool mastermind = false) {
+    CaseParticipant p;
+    p.role = role;
+    p.rank = rank;
+    p.exposure = exposure;
+    p.clue_type = clue;
+    p.mastermind = mastermind;
+    return p;
+}
+}  // namespace
+
+UTEST(cae, facegen_participant_faces_are_stable) {
+    // The same participant must always look the same, so a suspect stays
+    // recognisable across the whole case.
+    const CaseParticipant p = makeParticipant("Anton Keller", 4, 3, 2);
+    const Face a = facegen::makeFaceFromParticipant(p);
+    const Face b = facegen::makeFaceFromParticipant(p);
+    EXPECT_EQ((int)a.gender_id, (int)b.gender_id);
+    EXPECT_EQ((int)a.hair_id, (int)b.hair_id);
+    EXPECT_EQ((int)a.eye_id, (int)b.eye_id);
+    EXPECT_EQ((int)a.skin_id, (int)b.skin_id);
+    EXPECT_EQ((int)a.clothing_id, (int)b.clothing_id);
+    EXPECT_EQ((int)a.accessory_id, (int)b.accessory_id);
+    EXPECT_TRUE(facegen::compose(a).indices == facegen::compose(b).indices);
+}
+
+UTEST(cae, facegen_participant_identities_differ) {
+    // Different people should not collapse to the same portrait.
+    std::set<std::vector<uint8_t>> seen;
+    for (int i = 0; i < 16; ++i) {
+        const CaseParticipant p = makeParticipant("Agent " + std::to_string(i));
+        seen.insert(facegen::compose(facegen::makeFaceFromParticipant(p)).indices);
+    }
+    EXPECT_TRUE(seen.size() >= 14);
+}
+
+UTEST(cae, facegen_participant_field_changes_face) {
+    // The plain look and the "weighted" look (rank/exposure/clue) must not be
+    // identical, so those fields visibly matter.
+    const CaseParticipant plain = makeParticipant("Maria Voss");
+    const CaseParticipant seasoned = makeParticipant("Maria Voss", 8, 12, 5);
+    EXPECT_TRUE(facegen::compose(facegen::makeFaceFromParticipant(plain)).indices !=
+                facegen::compose(facegen::makeFaceFromParticipant(seasoned)).indices);
+}
+
+UTEST(cae, facegen_participant_mastermind_stands_out) {
+    // The mastermind flag must give a visibly distinctive face.
+    const CaseParticipant minion = makeParticipant("Otto Brandt", 3, 0, 1, false);
+    const CaseParticipant boss = makeParticipant("Otto Brandt", 3, 0, 1, true);
+    EXPECT_TRUE(facegen::compose(facegen::makeFaceFromParticipant(minion)).indices !=
+                facegen::compose(facegen::makeFaceFromParticipant(boss)).indices);
+}
+
+UTEST(cae, facegen_participant_stays_in_range) {
+    // Data files can carry any byte value; the produced components must still
+    // reduce cleanly and address the palette.
+    const CaseParticipant p = makeParticipant("J. Random Participant With A Long Name",
+                                              0xFF, 0xFF, 0xFF, true);
+    const Face f = facegen::makeFaceFromParticipant(p);
+    EXPECT_TRUE(f.gender_id < 2);
+    EXPECT_TRUE(f.hair_id < 60);
+    EXPECT_TRUE(f.eye_id < 6);
+    EXPECT_TRUE(f.skin_id < 4);
+    EXPECT_TRUE(f.clothing_id < 3);
+    EXPECT_TRUE(f.accessory_id < 16);
+
+    const facegen::Image img = facegen::compose(f);
+    const std::size_t pal_size = facegen::palette().size();
+    for (uint8_t idx : img.indices) {
+        EXPECT_TRUE((std::size_t)idx < pal_size);
+    }
+}
+
 

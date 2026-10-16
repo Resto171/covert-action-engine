@@ -472,7 +472,7 @@ Face makeFace(uint32_t seed) {
   };
   Face f{};
   f.gender_id = static_cast<uint8_t>(next() % 2);
-  f.hair_id = static_cast<uint8_t>(next() % 25);
+  f.hair_id = static_cast<uint8_t>(next() % 60);   // 12 styles x 5 colours
   f.eye_id = static_cast<uint8_t>(next() % 6);
   f.skin_id = static_cast<uint8_t>(next() % 4);
   f.clothing_id = static_cast<uint8_t>(next() % 3);
@@ -512,12 +512,64 @@ Face candidateFace(int index) {
   seed ^= (static_cast<uint32_t>(index + 1) << 7) ^ (static_cast<uint32_t>(index + 1) << 23);
   // Permute component bits more aggressively.
   Face f = makeFace(mix(seed));
-  f.hair_id = static_cast<uint8_t>((f.hair_id + static_cast<uint8_t>(index * 31)) % 25);
+  f.hair_id = static_cast<uint8_t>((f.hair_id + static_cast<uint8_t>(index * 31)) % 60);
   f.eye_id = static_cast<uint8_t>((f.eye_id + static_cast<uint8_t>(index * 17)) % 6);
   f.skin_id = static_cast<uint8_t>((f.skin_id + static_cast<uint8_t>(index * 23)) % 4);
   f.clothing_id = static_cast<uint8_t>((f.clothing_id + static_cast<uint8_t>(index * 13)) % 3);
   f.accessory_id = static_cast<uint8_t>((f.accessory_id + static_cast<uint8_t>(index * 7)) % 16);
   f.gender_id = static_cast<uint8_t>(index % 2);
+  return f;
+}
+
+Face makeFaceFromParticipant(const CaseParticipant& participant) {
+  // Identity: a strict FNV-1a over the role name. Byte-wise and fixed width, so
+  // the same participant hashes identically on every platform and build.
+  uint32_t idHash = 2166136261u;
+  for (const unsigned char c : participant.role) {
+    idHash ^= static_cast<uint32_t>(c);
+    idHash *= 16777619u;
+  }
+
+  const uint32_t rank = participant.rank;
+  const uint32_t exposure = participant.exposure;
+  const uint32_t clue = participant.clue_type;
+  const uint32_t master = participant.mastermind ? 1u : 0u;
+
+  // Weighted blend of the selected fields. The identity term dominates; the
+  // others add smaller contributions, and every term folds the identity hash in
+  // so a participant stays recognisable rather than being decided by the field
+  // values alone.
+  const uint32_t h = idHash * 8u +
+                     mix(idHash ^ (rank * 0x9E3779B9u)) * 4u +
+                     mix(idHash ^ (exposure * 0x85EBCA6Bu)) * 4u +
+                     mix(idHash ^ (clue * 0xC2B2AE35u)) * 2u +
+                     mix(idHash ^ (master * 0x517CC1B7u)) * 4u;
+
+  // The base look is the identity alone.
+  Face f = makeFace(idHash);
+
+  // Seniority: rising through the ranks and staying active take their toll, so
+  // high rank/exposure push the hair toward grey.
+  const unsigned age = rank * 8u + exposure;
+  if (age >= 40u || (age >= 24u && ((h >> 5) & 1u) != 0u)) {
+    f.hair_id = static_cast<uint8_t>((f.hair_id / 5u) * 5u + 4u);  // colour = grey
+  }
+
+  // Clue type leaves a light imprint on the wardrobe and the eyes, giving each
+  // organisation's people a faint shared look.
+  f.clothing_id = static_cast<uint8_t>((f.clothing_id + clue) % 3u);
+  f.eye_id = static_cast<uint8_t>((f.eye_id + clue) % 6u);
+
+  // A heavily seen face more often carries a defining mark, and the mastermind
+  // always gets a distinctive one so they stand out in the lineup.
+  if (participant.mastermind) {
+    static const uint8_t kTells[] = {11, 13, 14, 2, 1};  // eyepatch, scars, hat, glasses
+    f.accessory_id = kTells[(h >> 7) % (sizeof(kTells) / sizeof(kTells[0]))];
+  } else if (exposure >= 8u && ((h >> 11) & 1u) != 0u) {
+    static const uint8_t kMarks[] = {10, 12, 13, 14, 15};  // scars and moles
+    f.accessory_id = kMarks[(h >> 13) % (sizeof(kMarks) / sizeof(kMarks[0]))];
+  }
+
   return f;
 }
 
