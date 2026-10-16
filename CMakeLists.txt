@@ -28,6 +28,7 @@ find_package(PNG REQUIRED)
 set(CAE_CORE_SOURCES
         src/covert.cpp
         src/gameplay/casegenerator.cpp
+        src/gameplay/casefile.cpp
         src/gameplay/agentgenerator.cpp
         src/gameplay/gamestate.cpp
         src/minigame/combat.cpp

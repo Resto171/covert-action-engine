@@ -727,3 +727,139 @@ UTEST(cae, crypto_solving_finishes_and_returns_to_practice) {
     EXPECT_EQ((int)GameScreen::SkillPractice, (int)gameState->currentScreen);
 }
 
+
+#include "../src/gameplay/casefile.h"
+
+#include <vector>
+
+namespace {
+
+void putU16(std::vector<uint8_t>& b, uint16_t value) {
+    b.push_back(static_cast<uint8_t>(value & 0xFF));
+    b.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+}
+
+void putFixed(std::vector<uint8_t>& b, const std::string& s, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i) {
+        b.push_back(i < s.size() ? static_cast<uint8_t>(s[i]) : 0);
+    }
+}
+
+void putParticipant(std::vector<uint8_t>& b, const std::string& role,
+                    uint8_t exposure, uint8_t mastermind, uint8_t clue, uint8_t rank) {
+    putU16(b, 0xFFFF);
+    b.push_back(exposure);
+    b.push_back(0);
+    putFixed(b, role, 32);
+    const uint8_t trailer[12] = {0, 0, 0, mastermind, 0, 0, clue, 0, rank, 0, 0, 0};
+    b.insert(b.end(), trailer, trailer + 12);
+}
+
+void putEvent(std::vector<uint8_t>& b, uint16_t who, uint16_t message, const std::string& text,
+              uint8_t target, uint8_t type, uint8_t received, uint8_t destroyed, uint16_t value) {
+    putU16(b, who);
+    putU16(b, 0);
+    putU16(b, message);
+    putFixed(b, text, 32);
+    b.push_back(target);
+    b.push_back(type);
+    b.push_back(received);
+    b.push_back(destroyed);
+    putU16(b, value);
+}
+
+void putObject(std::vector<uint8_t>& b, const std::string& name, uint8_t icon) {
+    putFixed(b, name, 16);
+    b.push_back(icon);
+    b.push_back(0xFF);
+}
+
+// A minimal, well-formed crime file built from synthetic data (no game data is
+// required, so the test stays hermetic).
+std::vector<uint8_t> sampleCrimeFile() {
+    std::vector<uint8_t> b;
+    putU16(b, 2);  // participants
+    putU16(b, 3);  // events (two real + one terminator)
+    putParticipant(b, "Alpha", 5, 0, 1, 4);
+    putParticipant(b, "Beta", 0, 1, 7, 7);
+    putEvent(b, 0, 42, "Sent item", 1, 2, 4, 0, 7);
+    putEvent(b, 1, 43, "Met contact", 0, 8, 0, 0, 0);
+    putEvent(b, 0x00FF, 0, "", 0, 0, 0, 0, 0);  // blank terminator (link = 255)
+    putObject(b, "Item", 9);
+    putObject(b, "Prisoner", 7);
+    putObject(b, "", 0xFF);  // empty slot
+    putObject(b, "", 0xFF);  // empty slot
+    return b;
+}
+
+}  // namespace
+
+
+UTEST(cae, parse_case_file_reads_the_verified_layout) {
+    const std::vector<uint8_t> bytes = sampleCrimeFile();
+    // 4 + 2*48 + 3*44 + 4*18 = 304.
+    EXPECT_EQ((std::size_t)304, bytes.size());
+
+    CaseFile file;
+    ASSERT_TRUE(parseCaseFile(bytes.data(), bytes.size(), file));
+
+    ASSERT_EQ((std::size_t)2, file.participants.size());
+    EXPECT_TRUE(file.participants[0].role == "Alpha");
+    EXPECT_EQ((int)5, (int)file.participants[0].exposure);
+    EXPECT_TRUE(!file.participants[0].mastermind);
+    EXPECT_EQ((int)1, (int)file.participants[0].clue_type);
+    EXPECT_EQ((int)4, (int)file.participants[0].rank);
+
+    EXPECT_TRUE(file.participants[1].role == "Beta");
+    EXPECT_EQ((int)0, (int)file.participants[1].exposure);
+    EXPECT_TRUE(file.participants[1].mastermind);
+    EXPECT_EQ((int)7, (int)file.participants[1].clue_type);
+    EXPECT_EQ((int)7, (int)file.participants[1].rank);
+
+    // The blank terminator is not returned as an event.
+    ASSERT_EQ((std::size_t)2, file.events.size());
+    EXPECT_EQ(0, file.events[0].participant);
+    EXPECT_EQ(42, file.events[0].message_id);
+    EXPECT_TRUE(file.events[0].text == "Sent item");
+    EXPECT_EQ(1, file.events[0].target);
+    EXPECT_EQ((int)2, (int)file.events[0].type);
+    EXPECT_EQ((int)4, (int)file.events[0].received_mask);
+    EXPECT_EQ(7, file.events[0].value);
+    EXPECT_EQ(1, file.events[1].participant);
+    EXPECT_EQ(43, file.events[1].message_id);
+    EXPECT_EQ((int)8, (int)file.events[1].type);
+
+    // Empty object slots are dropped.
+    ASSERT_EQ((std::size_t)2, file.objects.size());
+    EXPECT_TRUE(file.objects[0].name == "Item");
+    EXPECT_EQ((int)9, (int)file.objects[0].icon);
+    EXPECT_TRUE(file.objects[1].name == "Prisoner");
+    EXPECT_EQ((int)7, (int)file.objects[1].icon);
+}
+
+
+UTEST(cae, parse_case_file_rejects_bad_input) {
+    CaseFile file;
+
+    EXPECT_TRUE(!parseCaseFile(nullptr, 0, file));
+
+    const uint8_t too_short[] = {0x01, 0x00};
+    EXPECT_TRUE(!parseCaseFile(too_short, sizeof(too_short), file));
+
+    // The header claims one participant and one event, but there is no room.
+    const uint8_t bogus[] = {0x01, 0x00, 0x01, 0x00, 0x00, 0x00};
+    EXPECT_TRUE(!parseCaseFile(bogus, sizeof(bogus), file));
+
+    // A buffer truncated inside the participant region must be rejected.
+    std::vector<uint8_t> truncated = sampleCrimeFile();
+    truncated.resize(100);
+    EXPECT_TRUE(!parseCaseFile(truncated.data(), truncated.size(), file));
+}
+
+
+UTEST(cae, load_case_file_handles_missing_files) {
+    CaseFile file;
+    EXPECT_TRUE(!loadCaseFile("this_file_does_not_exist.dta", file));
+}
+
+

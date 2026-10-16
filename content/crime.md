@@ -1,23 +1,27 @@
 ## Crime file format
 
+_Layout verified against all thirteen shipped `CRIME*.DTA` files. Each file is
+exactly `4 + pp*48 + ee*44 + 4*18` bytes, stored in the order header,
+participants, events, object slots._
+
 ### Header
 
     pp 00 ee 00
 
 - pp = # Participants
-- ee = # Events + 1
+- ee = # Events + 1 (the final event is a blank terminator)
 
 ### Participant entry
 
     FF FF xx 00 nn nn nn nn nn nn nn nn nn nn nn nn
     nn nn nn nn nn nn nn nn nn nn nn nn nn nn nn nn
-    nn nn nn nn ?? ?? mm ?? 00 00 uu 00 rr 00 ?? 00
+    nn nn nn nn ?? ?? ?? mm 00 00 uu 00 rr 00 ?? 00
 
 - xx = exposure field (always 0 for mastermind)
 - nn = name of role (32 bytes)
-- mm = mastermind if 1
-- uu = clue type
-- rr = participant rank
+- mm = mastermind if 1 (trailer byte 3)
+- uu = clue type (trailer byte 6)
+- rr = participant rank (trailer byte 8)
 
 #### Clue Type
 - 00 vehicle
@@ -61,6 +65,9 @@ _These offsets need to be double-checked!_
     00 00 00 00 00 00 00 00 00 00 00 00
 
 ### Object entry
+
+There are always exactly four object slots (72 bytes) after the events; empty
+slots have an empty name and an icon of `FF`.
 
     oo oo oo oo oo oo oo oo oo oo oo oo oo oo oo oo
     ii FF

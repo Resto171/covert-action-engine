@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../types.h"  // City (the single canonical definition)
+#include "casefile.h"  // CaseFile (parsed CRIME*.DTA templates)
 
 #define NUM_MISSION_TYPES 13
 
@@ -133,3 +134,7 @@ public:
 
 
 extern std::vector<Mission> missions;  // TODO: switch to a set type with name as key
+
+// The crime templates loaded from the original CRIME*.DTA files, in crime
+// number order. Empty until case_gen() runs (or if the data files are absent).
+extern std::vector<CaseFile> caseFiles;

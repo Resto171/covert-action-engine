@@ -1,11 +1,12 @@
 #include "casegenerator.h"
 
-#include <fstream>
 #include <iostream>
+#include <string>
 #include <utility>
 
 
 std::vector<Mission> missions;
+std::vector<CaseFile> caseFiles;
 
 
 std::string generateName(Organization org) {
@@ -60,30 +61,49 @@ MissionSet::MissionSet(Mission, Mission, Mission) {
 }
 
 
-int case_gen() {  // TODO-debug
-  missions.reserve(NUM_MISSION_TYPES);
+namespace {
 
-  std::ifstream infile{"mission.dat"};
-  if (!infile) {
-    // Fail loudly rather than silently producing an empty case list.
-    std::cerr << "case_gen: could not open mission.dat\n";
-    return 1;
-  }
+// Directories that may hold the original CRIME*.DTA files, tried in order: the
+// working directory first, then the documented data locations.
+const char* const kCrimeDirs[] = {
+    "",
+    "data/Sid Meier's Covert Action/MPS/COVERT/",
+    "MPS/COVERT/",
+    "COVERT/",
+};
 
-  std::string s;
-  while (std::getline(infile, s)) {
-    if (s.empty()) {
-      break;
+std::string crimeFileName(int crime) {
+    return "CRIME" + std::to_string(crime) + ".DTA";
+}
+
+}  // namespace
+
+
+// Load every crime template the data files provide. This replaces the old
+// placeholder that read a hand-written mission.dat. Missing data is not fatal:
+// the caller simply gets an empty list.
+int case_gen() {
+    caseFiles.clear();
+    caseFiles.reserve(NUM_MISSION_TYPES);
+
+    for (int crime = 0; crime < NUM_MISSION_TYPES; ++crime) {
+        CaseFile file;
+        for (const char* dir : kCrimeDirs) {
+            if (loadCaseFile(std::string(dir) + crimeFileName(crime), file)) {
+                caseFiles.push_back(std::move(file));
+                break;
+            }
+        }
     }
-    if (s.starts_with("# ")) {
-      missions.emplace_back(s.substr(2));
-    } else if (s.starts_with("- ") && !missions.empty()) {
-      missions.back().addParticipant(s.substr(2));
-    }
-  }
 
-  for (const auto& mission : missions) {
-    mission.printOverview();
-  }
-  return 0;
+    if (caseFiles.empty()) {
+        std::cerr << "case_gen: no CRIME*.DTA files found\n";
+        return 1;
+    }
+
+    for (const CaseFile& file : caseFiles) {
+        std::cout << "Crime template: " << file.participants.size() << " participants, "
+                  << file.events.size() << " events, " << file.objects.size() << " objects\n";
+    }
+    return 0;
 }
