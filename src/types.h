@@ -51,6 +51,7 @@ enum class GameScreen : int {
   CIAContact,
   CIAMainMenu,
   CIAData,
+  Data,  // "Check Data" from a building's menu
   ReviewClues,
   ReviewSuspects,
   ReviewInsideInfo,
@@ -107,6 +108,7 @@ enum class OriginScreen : int {
   CIA,
   CityMenu,
   SkillPractice,  // minigames launched from the practice menu
+  Data,           // review screens launched from the building "Check Data" menu
   UNKNOWNORIGIN = -1,
 };
 

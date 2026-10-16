@@ -1,16 +1,14 @@
 #include "loadsave.h"
 
-#ifndef NO_SDL
-#include <SDL.h>
-#endif
+#include "../gameplay/gamestate.h"
+#include "../gameplay/mainchar.h"
 
 #include <array>
 #include <cstddef>
-#include <cstdio>
-#include <cstring>
-#include <stdexcept>
+#include <cstdlib>
+#include <fstream>
 #include <string>
-#include <vector>
+#include <utility>
 
 namespace {
 
@@ -19,92 +17,166 @@ constexpr std::array<const char*, 5> kSaveFiles = {
     "CV0.SVE", "CV1.SVE", "CV2.SVE", "CV3.SVE", "CV4.SVE",
 };
 
-// The player's callsign sits near the start of a save file (offset 0x46A).
-constexpr std::size_t kCallsignOffset = 0x46A;
-constexpr std::size_t kCallsignReadSize = 11;
-// One extra byte so the buffer is always NUL-terminated after a read.
-constexpr std::size_t kCallsignBufferSize = kCallsignReadSize + 1;
+// Every save starts with this line so a foreign/legacy file can be rejected
+// rather than misparsed.
+constexpr char kMagic[] = "CAESAVE1";
 
 constexpr char kEmptySlot[] = " - Empty -";
+
+// Read one line, tolerating CRLF (the saves may have been written on Windows).
+bool readLine(std::istream& in, std::string& line) {
+    if (!std::getline(in, line)) {
+        return false;
+    }
+    if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+    }
+    return true;
+}
 
 }  // namespace
 
 
-std::vector<std::string> show_game_files() {
-#ifndef NO_SDL
-    std::vector<std::string> game_names;
-    game_names.reserve(kSaveFiles.size());
-
-    // Zero-initialised so a short or absent read is still a valid C string.
-    std::array<char, kCallsignBufferSize> callsign {};
-
-    for (const char* fname : kSaveFiles) {
-        callsign.fill('\0');
-
-        SDL_RWops* reader = SDL_RWFromFile(fname, "rb");
-        if (reader != nullptr) {
-            // Show name, probably at offset 0x46A
-            SDL_RWseek(reader, kCallsignOffset, RW_SEEK_SET);
-            SDL_RWread(reader, callsign.data(), kCallsignReadSize, 1);
-            SDL_RWclose(reader);
-        } else {
-            // Name is empty
-            std::memcpy(callsign.data(), kEmptySlot, sizeof(kEmptySlot));
-        }
-
-        game_names.emplace_back(callsign.data());
+bool writeSaveGame(const std::string& path, const SaveGame& save) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
     }
-    return game_names;
-#else
-    return std::vector<std::string>{"A", "B", "C", "D"};
-#endif
+
+    out << kMagic << "\n";
+    out << "callsign=" << save.callsign << "\n";
+    out << "rank=" << save.rank << "\n";
+    out << "apt_combat=" << save.apt_combat << "\n";
+    out << "apt_driving=" << save.apt_driving << "\n";
+    out << "apt_crypto=" << save.apt_crypto << "\n";
+    out << "apt_elec=" << save.apt_elec << "\n";
+    out << "difficulty=" << save.difficulty << "\n";
+    out << "screen=" << save.screen << "\n";
+    out << "city=" << save.city << "\n";
+    return static_cast<bool>(out);
 }
 
 
-// TODO
-#ifndef NO_SDL
+bool readSaveGame(const std::string& path, SaveGame& out) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+
+    std::string line;
+    if (!readLine(in, line) || line != kMagic) {
+        return false;  // not one of our saves
+    }
+
+    SaveGame save;
+    while (readLine(in, line)) {
+        const std::size_t eq = line.find('=');
+        if (eq == std::string::npos) {
+            continue;
+        }
+        const std::string key = line.substr(0, eq);
+        const std::string val = line.substr(eq + 1);
+
+        if (key == "callsign")         { save.callsign = val; }
+        else if (key == "rank")        { save.rank = std::atoi(val.c_str()); }
+        else if (key == "apt_combat")  { save.apt_combat = std::atoi(val.c_str()); }
+        else if (key == "apt_driving") { save.apt_driving = std::atoi(val.c_str()); }
+        else if (key == "apt_crypto")  { save.apt_crypto = std::atoi(val.c_str()); }
+        else if (key == "apt_elec")    { save.apt_elec = std::atoi(val.c_str()); }
+        else if (key == "difficulty")  { save.difficulty = std::atoi(val.c_str()); }
+        else if (key == "screen")      { save.screen = std::atoi(val.c_str()); }
+        else if (key == "city")        { save.city = val; }
+    }
+
+    out = std::move(save);
+    return true;
+}
+
+
+SaveGame snapshotSaveGame() {
+    SaveGame save;
+
+    if (mainChar) {
+        save.callsign = mainChar->getCallsign();
+        save.rank = mainChar->getRank();
+        save.apt_combat = static_cast<int>(mainChar->getCombatAptitude());
+        save.apt_driving = static_cast<int>(mainChar->getDrivingAptitude());
+        save.apt_crypto = static_cast<int>(mainChar->getCryptoAptitude());
+        save.apt_elec = static_cast<int>(mainChar->getElecAptitude());
+    }
+
+    if (gameState) {
+        save.difficulty = static_cast<int>(gameState->gameDifficulty);
+        save.screen = static_cast<int>(gameState->currentScreen);
+    }
+
+    return save;
+}
+
+
+void applySaveGame(const SaveGame& save) {
+    if (!mainChar) {
+        mainChar = std::make_unique<MainChar>();
+    }
+    mainChar->setCallsign(save.callsign);
+    mainChar->setRank(save.rank);
+    mainChar->setSkillLevels(static_cast<Aptitude>(save.apt_combat),
+                             static_cast<Aptitude>(save.apt_driving),
+                             static_cast<Aptitude>(save.apt_crypto),
+                             static_cast<Aptitude>(save.apt_elec));
+
+    if (!gameState) {
+        gameState = std::make_unique<GameState>();
+    }
+    gameState->setGameDifficulty(static_cast<Difficulty>(save.difficulty));
+    gameState->currentScreen = static_cast<GameScreen>(save.screen);
+}
+
+
+std::vector<std::string> show_game_files() {
+    std::vector<std::string> game_names;
+    game_names.reserve(kSaveFiles.size());
+
+    for (const char* fname : kSaveFiles) {
+        SaveGame save;
+        if (readSaveGame(fname, save) && !save.callsign.empty()) {
+            game_names.push_back(save.callsign);
+        } else {
+            game_names.emplace_back(kEmptySlot);
+        }
+    }
+    return game_names;
+}
+
+
 FileStatus load_game(int game_idx) {
-    // Guard the index: slot names are only valid for 0..kSaveFiles.size()-1.
-    // Before this check an out-of-range index left `fname` pointing at
-    // uninitialised memory which was then handed to SDL_RWFromFile.
     if (game_idx < 0 || static_cast<std::size_t>(game_idx) >= kSaveFiles.size()) {
-        // Out-of-range slot: nothing to load.
+        return FileStatus::NotFound;  // out-of-range slot
+    }
+
+    SaveGame save;
+    if (!readSaveGame(kSaveFiles[game_idx], save)) {
         return FileStatus::NotFound;
     }
 
-    SDL_RWops* reader = SDL_RWFromFile(kSaveFiles[game_idx], "rb");
-    if (reader == nullptr) {
-        // Save file does not exist
-///         std::cout << kSaveFiles[game_idx] << std::endl;
-        return FileStatus::NotFound;
-    }
-    SDL_RWclose(reader);
+    applySaveGame(save);
     return FileStatus::Ok;
 }
 
 
-int save_game(const char* fname) {
-    SDL_RWops* reader = SDL_RWFromFile(fname, "rb");
-    if (reader == nullptr) {
-        // File does not yet exist, create fresh data for new file.
-
-        // TODO
-
-    } else {
-        // Import existing save file, modify
-
-        // TODO
-
-        SDL_RWclose(reader);
+FileStatus save_game_slot(int game_idx) {
+    if (game_idx < 0 || static_cast<std::size_t>(game_idx) >= kSaveFiles.size()) {
+        return FileStatus::NotFound;
     }
-
-    SDL_RWops* writer = SDL_RWFromFile(fname, "wb");
-    if (writer == nullptr) {
-        throw std::runtime_error("cannot write to save game file");
-    }
-
-    SDL_RWwrite(writer, "abcde", 6, 1);
-    SDL_RWclose(writer);
-    return 0;
+    return writeSaveGame(kSaveFiles[game_idx], snapshotSaveGame())
+               ? FileStatus::Ok
+               : FileStatus::Invalid;
 }
-#endif
+
+
+int save_game(const char* fname) {
+    if (fname == nullptr) {
+        return -1;
+    }
+    return writeSaveGame(fname, snapshotSaveGame()) ? 0 : -1;
+}

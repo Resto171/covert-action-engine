@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+#include "../disk/loadsave.h"
+
 
 
 void GameState::initMiniGameClasses()
@@ -154,8 +156,12 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->selectedChoice == 3)  { currentScreen = GameScreen::HallOfFame; }
         break;
       case GameScreen::Load:
-        // TODO: save/load not implemented; return to the main menu instead of dying.
-        currentScreen = GameScreen::BeginMenu;
+        // Selecting a slot attempts to load it. A successful load restores the
+        // saved screen (applySaveGame); an empty or foreign slot bounces back to
+        // the main menu.
+        if (load_game(this->selectedChoice) != FileStatus::Ok) {
+          currentScreen = GameScreen::BeginMenu;
+        }
         break;
       case GameScreen::SkillPractice:  // TODO
         (this->modalSequence)++;  // TODO: this double-increments currently (FIXME) using ENTER but not ESC
@@ -224,6 +230,18 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->selectedChoice == 6)  { currentScreen = GameScreen::ReviewCity; }
         if (this->selectedChoice == 7)  { currentScreen = GameScreen::ReviewActivity; }
         break;
+      case GameScreen::Data:
+        // The building "Check Data" menu. Its reviews return here, not to the
+        // CIA office, so record Data as their origin.
+        if (this->selectedChoice == 0)  { currentScreen = GameScreen::CityMainMenu; }
+        if (this->selectedChoice == 1)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewClues; }
+        if (this->selectedChoice == 2)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewSuspects; }
+        if (this->selectedChoice == 3)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewInsideInfo; }
+        if (this->selectedChoice == 4)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewNews; }
+        if (this->selectedChoice == 5)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewOrg; }
+        if (this->selectedChoice == 6)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewCity; }
+        if (this->selectedChoice == 7)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::ReviewActivity; }
+        break;
       case GameScreen::CIAIntel:
         if (this->selectedChoice == 0)  { currentScreen = GameScreen::CIAMainMenu; }
         if (this->selectedChoice == 1 ||
@@ -283,8 +301,10 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->selectedChoice == 7)  { currentScreen = GameScreen::GameExitModal; }
         break;
       case GameScreen::LoadSave:
-        // TODO: save/load not implemented yet; return to the hotel.
+        // Saving into the chosen slot, then back to the hotel.
+        save_game_slot(this->selectedChoice);
         currentScreen = GameScreen::Hotel;
+        this->modalSequence = 0;
         break;
       case GameScreen::ReviewClues:
       case GameScreen::ReviewSuspects:
@@ -306,8 +326,8 @@ void GameState::getNextScreen(ScreenExitCondition condition)
         if (this->selectedChoice == 0)  { enterMiniGame(MiniGameType::Elec); }
         if (this->selectedChoice == 1)  { currentScreen = GameScreen::MiniGameCombatStart; }
         if (this->selectedChoice == 2)  { currentScreen = GameScreen::BuildingWatch; }
-        // TODO: "Check Data" has no implemented screen yet; fall back to watching.
-        if (this->selectedChoice == 3)  { currentScreen = GameScreen::BuildingWatch; }
+        // "Check Data" now opens the building data/review screen.
+        if (this->selectedChoice == 3)  { this->origScreen = OriginScreen::Data; currentScreen = GameScreen::Data; }
         if (this->selectedChoice == 4)  { currentScreen = GameScreen::CityMainMenu; }
         break;
       case GameScreen::BuildingWatch:
@@ -393,6 +413,8 @@ GameScreen GameState::goBackFrom(OriginScreen os)
       return GameScreen::CityMainMenu;
     case OriginScreen::SkillPractice:
       return GameScreen::SkillPractice;
+    case OriginScreen::Data:
+      return GameScreen::Data;
     case OriginScreen::UNKNOWNORIGIN:
     default:
       return GameScreen::CityMainMenu;

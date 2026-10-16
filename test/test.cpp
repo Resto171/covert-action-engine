@@ -38,15 +38,140 @@ UTEST(cae, disk_show_game_files_lists_slots) {
 }
 
 
-#ifndef NO_SDL
 UTEST(cae, disk_load_game_rejects_out_of_range_slot) {
-    // Slots are 0..4. Out-of-range indices used to leave a wild pointer to be
-    // handed to SDL_RWFromFile; they must instead report NotFound.
+    // Slots are 0..4. Out-of-range indices must report NotFound rather than
+    // being used as an index into the slot table.
     EXPECT_EQ((int)FileStatus::NotFound, (int)load_game(5));
     EXPECT_EQ((int)FileStatus::NotFound, (int)load_game(100));
     EXPECT_EQ((int)FileStatus::NotFound, (int)load_game(-1));
 }
-#endif
+
+
+#include <cstdio>
+#include <fstream>
+
+UTEST(cae, save_game_round_trips_all_fields) {
+    const std::string path = "cae_save_roundtrip.tmp";
+
+    SaveGame in;
+    in.callsign = "Max Power";
+    in.rank = 3;
+    in.apt_combat = (int)Aptitude::Good;
+    in.apt_driving = (int)Aptitude::Average;
+    in.apt_crypto = (int)Aptitude::Excellent;
+    in.apt_elec = (int)Aptitude::Awesome;
+    in.difficulty = (int)Difficulty::Level3;
+    in.screen = (int)GameScreen::Hotel;
+    in.city = "Cairo";
+
+    ASSERT_TRUE(writeSaveGame(path, in));
+
+    SaveGame out;
+    ASSERT_TRUE(readSaveGame(path, out));
+    EXPECT_TRUE(in.callsign == out.callsign);
+    EXPECT_EQ(in.rank, out.rank);
+    EXPECT_EQ(in.apt_combat, out.apt_combat);
+    EXPECT_EQ(in.apt_driving, out.apt_driving);
+    EXPECT_EQ(in.apt_crypto, out.apt_crypto);
+    EXPECT_EQ(in.apt_elec, out.apt_elec);
+    EXPECT_EQ(in.difficulty, out.difficulty);
+    EXPECT_EQ(in.screen, out.screen);
+    EXPECT_TRUE(in.city == out.city);
+
+    std::remove(path.c_str());
+}
+
+
+UTEST(cae, read_save_game_rejects_missing_and_foreign_files) {
+    SaveGame out;
+    EXPECT_TRUE(!readSaveGame("cae_definitely_missing.tmp", out));
+
+    // A file without our magic header must be rejected, not misparsed.
+    const std::string path = "cae_save_foreign.tmp";
+    {
+        std::ofstream o(path);
+        o << "not one of our saves\n";
+    }
+    EXPECT_TRUE(!readSaveGame(path, out));
+    std::remove(path.c_str());
+}
+
+
+UTEST(cae, save_and_load_restores_the_session) {
+    mainChar = std::make_unique<MainChar>();
+    mainChar->setCallsign("Nova");
+    mainChar->setRank(2);
+    mainChar->setSkillLevels(Aptitude::Good, Aptitude::Average,
+                             Aptitude::Excellent, Aptitude::Awesome);
+    gameState = std::make_unique<GameState>();
+    gameState->setGameDifficulty(Difficulty::Level3);
+    gameState->currentScreen = GameScreen::Hotel;
+
+    ASSERT_EQ((int)FileStatus::Ok, (int)save_game_slot(0));
+    EXPECT_TRUE(show_game_files()[0] == "Nova");
+
+    // Wipe the session, then load it back.
+    mainChar = std::make_unique<MainChar>();
+    gameState = std::make_unique<GameState>();
+    ASSERT_EQ((int)FileStatus::Ok, (int)load_game(0));
+
+    EXPECT_TRUE(mainChar->getCallsign() == "Nova");
+    EXPECT_EQ(2, mainChar->getRank());
+    EXPECT_EQ((int)Aptitude::Good, (int)mainChar->getCombatAptitude());
+    EXPECT_EQ((int)Aptitude::Awesome, (int)mainChar->getElecAptitude());
+    EXPECT_EQ((int)Difficulty::Level3, (int)gameState->getGameDifficulty());
+    EXPECT_EQ((int)GameScreen::Hotel, (int)gameState->currentScreen);
+
+    std::remove("CV0.SVE");
+
+    // An empty slot cannot be loaded.
+    std::remove("CV1.SVE");
+    EXPECT_EQ((int)FileStatus::NotFound, (int)load_game(1));
+}
+
+
+UTEST(cae, fsm_load_screen_loads_a_slot) {
+    // Prepare a slot on disk.
+    mainChar = std::make_unique<MainChar>();
+    mainChar->setCallsign("Echo");
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Hotel;
+    ASSERT_EQ((int)FileStatus::Ok, (int)save_game_slot(0));
+
+    // From the main menu, selecting slot 0 loads it (and restores its screen).
+    mainChar = std::make_unique<MainChar>();
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Load;
+    gameState->selectedChoice = 0;
+    gameState->getNextScreen();
+
+    EXPECT_TRUE(mainChar->getCallsign() == "Echo");
+    EXPECT_EQ((int)GameScreen::Hotel, (int)gameState->currentScreen);
+
+    std::remove("CV0.SVE");
+
+    // An empty slot falls back to the main menu.
+    std::remove("CV3.SVE");
+    gameState->currentScreen = GameScreen::Load;
+    gameState->selectedChoice = 3;
+    gameState->getNextScreen();
+    EXPECT_EQ((int)GameScreen::BeginMenu, (int)gameState->currentScreen);
+}
+
+
+UTEST(cae, fsm_loadsave_screen_saves_the_session) {
+    mainChar = std::make_unique<MainChar>();
+    mainChar->setCallsign("Rook");
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::LoadSave;
+    gameState->selectedChoice = 2;
+    gameState->getNextScreen();
+
+    EXPECT_EQ((int)GameScreen::Hotel, (int)gameState->currentScreen);
+    EXPECT_TRUE(show_game_files()[2] == "Rook");
+
+    std::remove("CV2.SVE");
+}
 
 
 #include "../src/gameplay/basegenerator.h"
@@ -323,9 +448,44 @@ UTEST(cae, fsm_building_menu_maps_to_correct_screens) {
     gameState->getNextScreen();
     CAE_EXPECT_SCREEN(GameScreen::BuildingWatch);
 
+    // "Check Data" (3) now opens the building data screen.
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Building2;
+    gameState->selectedChoice = 3;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Data);
+    EXPECT_EQ((int)OriginScreen::Data, (int)gameState->origScreen);
+
     gameState = std::make_unique<GameState>();
     gameState->currentScreen = GameScreen::Building2;
     gameState->selectedChoice = 4;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
+}
+
+
+// The building "Check Data" reviews must return to the Data screen (not the CIA
+// office), and "Return to city" must leave.
+UTEST(cae, fsm_data_screen_reviews_return_to_data) {
+    gameState = std::make_unique<GameState>();
+    gameState->currentScreen = GameScreen::Building1;
+    gameState->selectedChoice = 3;
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Data);
+
+    gameState->selectedChoice = 1;  // Review Clues
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::ReviewClues);
+    gameState->getNextScreen();     // review screen returns via goBackFrom
+    CAE_EXPECT_SCREEN(GameScreen::Data);
+
+    gameState->selectedChoice = 5;  // Organization Summary
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::ReviewOrg);
+    gameState->getNextScreen();
+    CAE_EXPECT_SCREEN(GameScreen::Data);
+
+    gameState->selectedChoice = 0;  // Return to city
     gameState->getNextScreen();
     CAE_EXPECT_SCREEN(GameScreen::CityMainMenu);
 }

@@ -6,6 +6,8 @@ uint64_t SDL_GetTicks64()  { return 0; }
 
 #include "gui.h"
 
+#include "../disk/loadsave.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -25,7 +27,7 @@ namespace {
 const char* const kScreenNames[] = {
     "Splash1", "Splash2", "BeginMenu", "NewCharacter", "Load", "SkillPractice",
     "HallOfFame", "SkillUpgrade", "Chief", "MastermindLineup", "ShowNewClues",
-    "CIAContact", "CIAMainMenu", "CIAData", "ReviewClues", "ReviewSuspects",
+    "CIAContact", "CIAMainMenu", "CIAData", "Data", "ReviewClues", "ReviewSuspects",
     "ReviewInsideInfo", "ReviewNews", "ReviewOrg", "ReviewCity", "ReviewActivity",
     "CIAIntel", "CIAAddBan", "ReviewWiretaps", "CIASam", "CIACrypto",
     "CodedMessages", "CrimeChronology", "CityMainMenu", "Airport", "Hotel",
@@ -263,10 +265,11 @@ void GUI::createGUI(GameScreen screen)
       // TODO: skill list and point allocation
       break;
     case GameScreen::Load:
-      dialogType = DialogType::INFO;
-      setBGColor(CAColor::DKGREY);
-      centerText(CAColor::WHITE, "Loading is not implemented yet", 40);
-      centerText(CAColor::GREY, "Press any key to return to the menu", 40 + UI_LINE_HEIGHT);
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Load a Saved Game", 20);
+      // show_game_files() returns the callsign (or " - Empty -") for each slot;
+      // the choice index is the slot number.
+      screenMenu(screen, show_game_files(), SDL_Rect{100, 50, 120, 1});
       break;
     case GameScreen::SkillPractice:
       setBGColor(CAColor::BLACK);
@@ -336,6 +339,16 @@ void GUI::createGUI(GameScreen screen)
       setBGColor(CAColor::BLACK);
       centerText(CAColor::WHITE, "Review Data", 8);
       screenMenu(screen, {" Return to Main Menu", " Review Clues", " Review Suspects",
+                          " Inside Information", " News Bulletins", " Organization Summary",
+                          " City Summary", " Activity Reports"},
+                 SDL_Rect{80, 30, 160, 1});
+      break;
+    case GameScreen::Data:
+      // The building "Check Data" screen: the same review material, but it
+      // belongs to the current building/city rather than the CIA office.
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Check Data", 8);
+      screenMenu(screen, {" Return to city", " Review Clues", " Review Suspects",
                           " Inside Information", " News Bulletins", " Organization Summary",
                           " City Summary", " Activity Reports"},
                  SDL_Rect{80, 30, 160, 1});
@@ -414,10 +427,10 @@ void GUI::createGUI(GameScreen screen)
       centerText(CAColor::GREY, "Press any key to go back", 40 + UI_LINE_HEIGHT);
       break;
     case GameScreen::LoadSave:
-      dialogType = DialogType::INFO;
-      setBGColor(CAColor::DKGREY);
-      centerText(CAColor::WHITE, "Save / Load", 40);
-      centerText(CAColor::GREY, "Press any key to go back", 40 + UI_LINE_HEIGHT);
+      setBGColor(CAColor::BLACK);
+      centerText(CAColor::WHITE, "Save Game", 20);
+      // Selecting a slot saves into it; the choice index is the slot number.
+      screenMenu(screen, show_game_files(), SDL_Rect{100, 50, 120, 1});
       break;
     case GameScreen::Building1:
     case GameScreen::Building2:
