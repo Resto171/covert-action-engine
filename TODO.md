@@ -73,8 +73,8 @@ Bases for the development of the engine are the source codes for Freeciv, Master
 - [ ] Define connections between each screen
 - [ ] Hotel
 - [ ] Intelligence HQ
-- [ ] Cryptography minigame
-- [ ] Electronics minigame
+- [x] Cryptography minigame
+- [x] Electronics minigame
 - [ ] Building exterior
 - [ ] Car chase minigame
 - [ ] Combat minigame
@@ -152,8 +152,8 @@ Bases for the development of the engine are the source codes for Freeciv, Master
   - [ ] Participant organizational chart
   - [ ] Debrief
   - [ ] Scoring
-  - [ ] Loading from data files
-  - [ ] Save / Load functionality?
+  - [ ] Loading from data files (CRIME*.DTA templates are parsed; other data files pending)
+  - [x] Save / Load functionality?
 - [ ] User Interface
   - [ ] Menus, easily implemented
   - [ ] Graphics / Picture display / Fonts / # colors
